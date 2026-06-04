@@ -41,6 +41,7 @@ import {
   X,
   Trash2,
   Download,
+  Edit,
   ArrowLeftRight,
   FileDown,
   ArrowUpRight,
@@ -73,7 +74,7 @@ import {
   Cell,
 } from 'recharts';
 
-export type Page = 'welcome' | 'login' | 'registerFirm' | 'firmAdmin' | 'masterAdmin' | 'dashboard' | 'supplierPayment' | 'receivePayment' | 'receiveCashPayment' | 'credit' | 'transactionHistory' | 'dayClosing' | 'schemeCreditSale' | 'customerLedger' | 'staffCredit' | 'staffAdvance';
+export type Page = 'welcome' | 'login' | 'registerFirm' | 'firmAdmin' | 'masterAdmin' | 'dashboard' | 'supplierPayment' | 'receivePayment' | 'receiveCashPayment' | 'credit' | 'transactionHistory' | 'dayClosing' | 'schemeCreditSale' | 'customerLedger' | 'staffCredit' | 'staffAdvance' | 'expense';
 
 export type FirmUser = { name: string, id: string, role: string, mobile: string, password?: string, salary?: number };
 
@@ -639,6 +640,7 @@ export default function App() {
           setFirmDailyRegisters={setFirmDailyRegisters}
           userRole={userRole}
           firms={firms}
+          onWorkingDateChange={setWorkingDate}
         />
       )}
       {currentPage === 'credit' && (
@@ -764,6 +766,39 @@ export default function App() {
           }}
         />
       )}
+
+      {currentPage === 'expense' && (
+        <ExpenseScreen 
+          onBack={() => setCurrentPage('dashboard')} 
+          workingDate={workingDate}
+          onRecordExpense={(amount, expenseName, date, paymentMode, category) => {
+            const txDate = date || workingDate;
+            const isTxDateClosed = !!firmDailyRegisters[`${currentFirmId}_${txDate}`]?.closed;
+
+            const doRecord = () => {
+              recordTransaction({
+                type: 'supplier_payment',
+                title: `Expense: ${category} - ${expenseName}`,
+                amount,
+                date: txDate,
+                extraDetails: `Expense Payment (${paymentMode})`,
+                patientName: expenseName
+              });
+              setCurrentPage('dashboard');
+            };
+
+            if (isTxDateClosed && userRole !== 'firmAdmin') {
+              setAdminUnlockAction({
+                onSuccess: doRecord,
+                title: "Unlock Closed Day Entry",
+                description: `The ledger for ${txDate} is locked. Submit the Admin Password to record this expense.`
+              });
+            } else {
+              doRecord();
+            }
+          }}
+        />
+      )}
       {(currentPage === 'receivePayment' || currentPage === 'receiveCashPayment') && (
         <ReceivePaymentScreen 
           onBack={() => {
@@ -828,6 +863,9 @@ export default function App() {
           setCounterOnlineSales={handleSetCounterOnlineSales}
           firmDailyRegisters={firmDailyRegisters}
           workingDate={workingDate}
+          userRole={userRole}
+          setTransactions={setTransactions}
+          setCustomers={setCustomers}
           onDeleteTransaction={(id) => {
             const tx = transactions.find(t => t.id === id);
             if (!tx) return;
@@ -1086,7 +1124,8 @@ function Dashboard({
   setCustomers,
   setFirmDailyRegisters,
   userRole,
-  firms
+  firms,
+  onWorkingDateChange
 }: { 
   onNavigate: (page: Page) => void, 
   onSelectCustomer?: (id: string | null) => void,
@@ -1108,7 +1147,8 @@ function Dashboard({
   setCustomers?: React.Dispatch<React.SetStateAction<Customer[]>>,
   setFirmDailyRegisters?: React.Dispatch<React.SetStateAction<Record<string, { opening: number; cashSales: number; onlineSales: number; closed: boolean }>>>,
   userRole?: 'user' | 'firmAdmin',
-  firms?: Firm[]
+  firms?: Firm[],
+  onWorkingDateChange?: (date: string) => void
 }) {
   const activeTransactions = transactions.filter(t => t.firmId === currentFirmId && t.date === workingDate);
   const activeCustomers = customers.filter(c => c.firmId === currentFirmId);
@@ -1870,7 +1910,7 @@ function Dashboard({
         )}
 
         <QuickActions onNavigate={onNavigate} />
-        <PageHeader workingDate={workingDate} isClosed={isClosed} />
+        <PageHeader workingDate={workingDate} isClosed={isClosed} onWorkingDateChange={onWorkingDateChange} />
         <BentoGrid 
           transactions={activeTransactions} 
           customers={activeCustomers} 
@@ -1897,7 +1937,7 @@ function QuickActions({ onNavigate }: { onNavigate: (page: Page) => void }) {
   return (
     <section>
       <h2 className="text-headline-md text-on-surface mb-stack-md">Quick Actions</h2>
-      <div className="grid grid-cols-5 gap-gutter">
+      <div className="grid grid-cols-3 sm:grid-cols-6 gap-gutter">
         <button onClick={() => onNavigate('credit')} className="flex flex-col items-center gap-2 cursor-pointer">
           <div className="w-14 h-14 bg-error-container/30 rounded-xl flex items-center justify-center text-error shadow-[0_4px_20px_rgba(0,0,0,0.04)] active:scale-95 transition-transform">
             <FileText className="w-7 h-7" />
@@ -1927,6 +1967,12 @@ function QuickActions({ onNavigate }: { onNavigate: (page: Page) => void }) {
             <Truck className="w-7 h-7" />
           </div>
           <span className="text-label-md text-center text-on-surface text-[12px] leading-tight">Supplier Payment</span>
+        </button>
+        <button onClick={() => onNavigate('expense')} className="flex flex-col items-center gap-2 cursor-pointer">
+          <div className="w-14 h-14 bg-rose-100 dark:bg-rose-950/40 rounded-xl flex items-center justify-center text-rose-600 shadow-[0_4px_20px_rgba(0,0,0,0.04)] active:scale-95 transition-transform border border-rose-200/40">
+            <TrendingUp className="w-7 h-7 rotate-180 text-rose-600" />
+          </div>
+          <span className="text-label-md text-center text-on-surface text-[12px] leading-tight">Record Expense</span>
         </button>
       </div>
     </section>
@@ -2070,6 +2116,169 @@ function SupplierPaymentScreen({ onBack, onRecordSupplierPayment, workingDate }:
                 <option value="Other">Other</option>
               </select>
               <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-outline w-5 h-5 pointer-events-none" />
+            </div>
+          </div>
+          
+          <div className="flex flex-col gap-stack-sm pt-2 relative z-10">
+            <label className="text-label-md text-on-surface-variant">Receipt Upload</label>
+            <button className="w-full border-2 border-dashed border-outline-variant/70 rounded-lg py-6 flex flex-col items-center justify-center gap-2 bg-surface hover:bg-surface-variant/50 transition-colors cursor-pointer" type="button">
+              <ImagePlus className="text-outline w-8 h-8" />
+              <span className="text-label-md text-on-surface-variant">Attach Bill / Receipt</span>
+            </button>
+          </div>
+        </form>
+      </main>
+
+      <div className="fixed bottom-0 left-0 w-full bg-surface-container-lowest border-t border-outline-variant p-container-padding-mobile z-50">
+        <div className="max-w-md mx-auto">
+          <button onClick={handleConfirm} className="w-full h-12 bg-error text-on-error rounded-lg text-label-md flex items-center justify-center gap-2 active:scale-[0.98] transition-transform shadow-[0_4px_12px_rgba(186,26,26,0.2)] cursor-pointer">
+            <CheckCircle className="w-5 h-5 flex-shrink-0" fill="currentColor" stroke="white" />
+            Confirm Outflow
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function ExpenseScreen({ 
+  onBack, 
+  onRecordExpense, 
+  workingDate 
+}: { 
+  onBack: () => void; 
+  onRecordExpense: (amount: number, expenseName: string, date: string, paymentMode: string, category: string) => void; 
+  workingDate?: string; 
+}) {
+  const [paymentMode, setPaymentMode] = useState('Cash');
+  const [amount, setAmount] = useState('');
+  const [expenseName, setExpenseName] = useState('');
+  const [date, setDate] = useState(() => workingDate || new Date().toISOString().split('T')[0]);
+  const [category, setCategory] = useState('Miscellaneous');
+  const [errorMsg, setErrorMsg] = useState('');
+
+  const handleConfirm = (e: React.FormEvent) => {
+    e.preventDefault();
+    const parsedAmount = parseFloat(amount);
+    if (!amount || isNaN(parsedAmount) || parsedAmount <= 0) {
+      setErrorMsg('Please enter a valid amount (> 0).');
+      return;
+    }
+    if (!expenseName.trim()) {
+      setErrorMsg('Please enter an expense details / recipient.');
+      return;
+    }
+    setErrorMsg('');
+    onRecordExpense(parsedAmount, expenseName.trim(), date, paymentMode, category);
+  };
+
+  const categories = [
+    'Rent & Utilities',
+    'Food & Catering',
+    'Salary & Wages',
+    'Office & Stationery',
+    'Maintenance & Repairs',
+    'Stock / Inventory',
+    'Miscellaneous'
+  ];
+
+  return (
+    <>
+      <header className="bg-surface-container-lowest w-full top-0 sticky border-b border-outline-variant flex justify-between items-center px-container-padding-mobile h-16 z-50">
+        <div className="flex items-center gap-3 cursor-pointer" onClick={onBack}>
+          <div className="w-8 h-8 rounded-full bg-primary-container text-on-primary-container flex items-center justify-center font-label-md text-label-md uppercase font-bold text-xs font-sans">
+            {expenseName ? expenseName.slice(0, 2) : 'EX'}
+          </div>
+          <span className="text-headline-mobile text-primary">ShopBooks</span>
+        </div>
+        <button className="text-on-surface-variant hover:bg-surface-container-low transition-colors duration-200 p-2 rounded-full flex items-center justify-center animate-fade-in" onClick={onBack} type="button">
+          <UserCircle className="w-6 h-6" />
+        </button>
+      </header>
+      
+      <main className="px-container-padding-mobile pt-stack-lg space-y-stack-lg max-w-md mx-auto text-left pb-24 animate-fade-in">
+        <div className="flex items-center gap-2 mb-1">
+          <TrendingUp className="w-6 h-6 text-error flex-shrink-0 rotate-180" />
+          <h1 className="text-headline-mobile text-on-surface">Record Expense</h1>
+        </div>
+        <p className="text-body-md text-on-surface-variant">Log business operational outflows.</p>
+
+        {errorMsg && (
+          <div className="p-3 bg-rose-50 text-rose-800 rounded-lg border border-rose-200 text-xs font-semibold">
+            {errorMsg}
+          </div>
+        )}
+
+        <form onSubmit={handleConfirm} className="space-y-stack-md">
+          <div className="flex flex-col gap-stack-xs">
+            <label className="text-label-md text-on-surface font-semibold" htmlFor="exp_amount">Amount (₹)</label>
+            <input 
+              id="exp_amount"
+              type="number" 
+              step="any"
+              placeholder="e.g. 350" 
+              className="w-full bg-surface text-on-surface text-body-md p-3 rounded-lg border border-outline-variant focus:border-secondary focus:ring-2 focus:ring-secondary/20 outline-none transition-shadow font-mono font-bold" 
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              required
+            />
+          </div>
+
+          <div className="flex flex-col gap-stack-xs">
+            <label className="text-label-md text-on-surface font-semibold" htmlFor="exp_name">Paid For / Description</label>
+            <input 
+              id="exp_name"
+              type="text" 
+              placeholder="e.g. Tea & snacks / internet bill" 
+              className="w-full bg-surface text-on-surface text-body-md p-3 rounded-lg border border-outline-variant focus:border-secondary focus:ring-2 focus:ring-secondary/20 outline-none transition-shadow" 
+              value={expenseName}
+              onChange={(e) => setExpenseName(e.target.value)}
+              required
+            />
+          </div>
+
+          <div className="flex flex-col gap-stack-xs">
+            <label className="text-label-md text-on-surface font-semibold" htmlFor="exp_date">Date</label>
+            <input 
+              id="exp_date"
+              type="date" 
+              className="w-full bg-surface text-on-surface text-body-md p-3 rounded-lg border border-outline-variant focus:border-secondary focus:ring-2 focus:ring-secondary/20 outline-none transition-shadow font-mono" 
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+            />
+          </div>
+
+          <div className="flex flex-col gap-stack-xs">
+            <label className="text-label-md text-on-surface font-semibold" htmlFor="exp_category">Expense Category</label>
+            <div className="relative">
+              <select 
+                id="exp_category"
+                className="w-full bg-surface text-on-surface text-body-md p-3 rounded-lg border border-outline-variant focus:border-secondary focus:ring-2 focus:ring-secondary/20 outline-none transition-shadow cursor-pointer" 
+                style={{ appearance: 'none', WebkitAppearance: 'none' }}
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+              >
+                {categories.map(cat => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+              </select>
+              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-outline w-5 h-5 pointer-events-none" />
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-stack-xs">
+            <label className="text-label-md text-on-surface font-semibold">Payment Mode</label>
+            <div className="grid grid-cols-3 gap-2">
+              {['Cash', 'UPI / Online', 'Cheque'].map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => setPaymentMode(mode)}
+                  className={`py-3 text-[12px] text-label-md font-bold rounded-lg transition-colors border cursor-pointer ${paymentMode === mode ? 'bg-secondary text-on-secondary border-secondary shadow-sm' : 'bg-surface text-on-surface border-outline-variant hover:bg-surface-variant/30'}`}
+                >
+                  {mode}
+                </button>
+              ))}
             </div>
           </div>
           
@@ -2243,7 +2452,15 @@ function MobileHeader({ activeFirm, currentUser, onClearAllData, onOpenSettings 
   );
 }
 
-function PageHeader({ workingDate, isClosed }: { workingDate: string, isClosed: boolean }) {
+function PageHeader({ 
+  workingDate, 
+  isClosed, 
+  onWorkingDateChange 
+}: { 
+  workingDate: string; 
+  isClosed: boolean; 
+  onWorkingDateChange?: (date: string) => void; 
+}) {
   const formattedDate = new Date(workingDate).toLocaleDateString('en-US', {
     weekday: 'long',
     year: 'numeric',
@@ -2252,19 +2469,53 @@ function PageHeader({ workingDate, isClosed }: { workingDate: string, isClosed: 
   });
 
   return (
-    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-      <div className="text-left">
-        <h1 className="text-headline-mobile md:text-headline-lg text-on-surface">Working Overview</h1>
-        <p className="text-on-surface-variant text-sm mt-1 flex items-center gap-1.5 font-medium">
-          <Calendar className="w-4 h-4 text-primary" />
-          <span>{formattedDate} ({workingDate})</span>
-        </p>
+    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-surface-container-low p-5 rounded-2xl border border-outline-variant/30 text-left">
+      <div className="text-left flex-1">
+        <h1 className="text-headline-mobile md:text-headline-lg font-black text-on-surface flex items-center gap-2">
+          <span>Working Overview</span>
+          {isClosed ? (
+            <span className="text-[10px] bg-rose-50 border border-rose-200 text-rose-700 px-2 py-0.5 rounded font-black uppercase tracking-wider">LOCKED</span>
+          ) : (
+            <span className="text-[10px] bg-emerald-50 border border-emerald-200 text-emerald-700 px-2 py-0.5 rounded font-black uppercase tracking-wider">OPEN</span>
+          )}
+        </h1>
+        <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-2">
+          <p className="text-on-surface-variant text-xs flex items-center gap-1.5 font-semibold">
+            <Calendar className="w-4 h-4 text-primary shrink-0" />
+            <span className="font-mono text-xs">{formattedDate}</span>
+          </p>
+          
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-on-surface-variant">Change Date:</span>
+            <input 
+              type="date"
+              value={workingDate}
+              onChange={(e) => {
+                if (e.target.value && onWorkingDateChange) {
+                  onWorkingDateChange(e.target.value);
+                }
+              }}
+              className="bg-surface-bright text-on-surface border border-outline-variant rounded-lg px-2.5 py-1 text-xs font-bold font-mono outline-none cursor-pointer focus:border-primary transition-shadow" 
+            />
+          </div>
+        </div>
       </div>
-      {isClosed && (
-        <span className="bg-error-container text-error text-xs font-bold px-3 py-1.5 rounded-full flex items-center gap-1.5 shadow-sm">
-          <Lock className="w-3.5 h-3.5" />
-          <span>DAY CLOSED & LOCKED</span>
-        </span>
+      {isClosed ? (
+        <div className="bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-2 shadow-sm max-w-xs shrink-0">
+          <Lock className="w-4 h-4 text-rose-600 shrink-0" />
+          <div className="text-[10px] leading-snug">
+            <span className="font-extrabold block uppercase tracking-wider text-rose-850">DAY LOCKED</span>
+            <span className="text-on-surface-variant/80 font-normal">Edits locked for counter staff.</span>
+          </div>
+        </div>
+      ) : (
+        <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-2 shadow-sm max-w-xs shrink-0">
+          <Unlock className="w-4 h-4 text-emerald-600 shrink-0" />
+          <div className="text-[10px] leading-snug">
+            <span className="font-extrabold block uppercase tracking-wider text-emerald-850">REGISTER ACTIVE</span>
+            <span className="text-on-surface-variant/80 font-normal font-sans">Full user actions unlocked.</span>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -5347,7 +5598,10 @@ function TransactionHistoryScreen({
   setCounterOnlineSales,
   onDeleteTransaction,
   firmDailyRegisters,
-  workingDate
+  workingDate,
+  userRole,
+  setTransactions,
+  setCustomers
 }: { 
   onBack: () => void, 
   transactions: Transaction[], 
@@ -5364,7 +5618,10 @@ function TransactionHistoryScreen({
   setCounterOnlineSales: (val: number) => void,
   onDeleteTransaction: (id: string) => void,
   firmDailyRegisters: Record<string, { opening: number; cashSales: number; onlineSales: number; closed: boolean }>,
-  workingDate?: string
+  workingDate?: string,
+  userRole?: 'user' | 'firmAdmin',
+  setTransactions?: React.Dispatch<React.SetStateAction<Transaction[]>>,
+  setCustomers?: React.Dispatch<React.SetStateAction<Customer[]>>
 }) {
   const activeFirm = firms.find(f => f.id === currentFirmId);
   const activeTransactions = transactions.filter(t => t.firmId === currentFirmId);
@@ -5374,6 +5631,104 @@ function TransactionHistoryScreen({
   const [selectedType, setSelectedType] = useState<string>(initialFilter);
   const [selectedDate, setSelectedDate] = useState<string>('');
   const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
+
+  const [isEditingTx, setIsEditingTx] = useState(false);
+  const [editTitle, setEditTitle] = useState('');
+  const [editAmount, setEditAmount] = useState('');
+  const [editPatientName, setEditPatientName] = useState('');
+  const [editCustomerPhone, setEditCustomerPhone] = useState('');
+  const [editDate, setEditDate] = useState('');
+  const [editType, setEditType] = useState<Transaction['type']>('credit_sale');
+  const [editExtraDetails, setEditExtraDetails] = useState('');
+
+  useEffect(() => {
+    if (selectedTx) {
+      setEditTitle(selectedTx.title || '');
+      setEditAmount(String(selectedTx.amount || '0'));
+      setEditPatientName(selectedTx.patientName || '');
+      setEditCustomerPhone(selectedTx.customerPhone || '');
+      setEditDate(selectedTx.date || '');
+      setEditType(selectedTx.type || 'credit_sale');
+      setEditExtraDetails(selectedTx.extraDetails || '');
+    } else {
+      setIsEditingTx(false);
+    }
+  }, [selectedTx]);
+
+  const handleSaveEditTx = () => {
+    if (!selectedTx) return;
+    const isTxDateClosed = !!firmDailyRegisters[`${currentFirmId}_${selectedTx.date}`]?.closed;
+
+    const performEdit = () => {
+      const oldTx = selectedTx;
+      const parsedAmount = parseFloat(editAmount) || 0;
+      
+      const newTx: Transaction = { 
+        ...oldTx, 
+        title: editTitle,
+        amount: parsedAmount,
+        patientName: editPatientName || undefined,
+        customerPhone: editCustomerPhone || undefined,
+        date: editDate,
+        type: editType,
+        extraDetails: editExtraDetails
+      };
+
+      // Handle Customer balance reconciliation beautifully
+      if (setCustomers) {
+        setCustomers(prev => {
+          let updated = [...prev];
+
+          // Reverse old transaction impact if customer-facing
+          if (oldTx.patientName && (oldTx.type === 'credit_sale' || oldTx.type === 'receive_payment')) {
+            const oldName = oldTx.patientName.trim().toLowerCase();
+            updated = updated.map(c => {
+              if (c.firmId === currentFirmId && c.name.toLowerCase() === oldName) {
+                const reverseAmt = oldTx.type === 'credit_sale' ? -oldTx.amount : oldTx.amount;
+                return { ...c, pendingBalance: Math.max(0, c.pendingBalance + reverseAmt) };
+              }
+              return c;
+            });
+          }
+
+          // Apply new transaction impact if customer-facing
+          if (newTx.patientName && (newTx.type === 'credit_sale' || newTx.type === 'receive_payment')) {
+            const newName = newTx.patientName.trim().toLowerCase();
+            updated = updated.map(c => {
+              if (c.firmId === currentFirmId && c.name.toLowerCase() === newName) {
+                const applyAmt = newTx.type === 'credit_sale' ? newTx.amount : -newTx.amount;
+                return { ...c, pendingBalance: Math.max(0, c.pendingBalance + applyAmt) };
+              }
+              return c;
+            });
+          }
+
+          return updated;
+        });
+      }
+
+      // Update transaction in master list
+      if (setTransactions) {
+        setTransactions(prev => prev.map(t => t.id === oldTx.id ? newTx : t));
+      }
+
+      setSelectedTx(newTx);
+      setIsEditingTx(false);
+      alert("Transaction updated successfully!");
+    };
+
+    if (isTxDateClosed) {
+      if (userRole === 'firmAdmin') {
+        if (window.confirm(`WARNING: Date ${selectedTx.date} is closed and locked. As Firm Admin, do you want to force make this reservation correction?`)) {
+          performEdit();
+        }
+      } else {
+        alert("ACCESS LOCKED: For audits, Counter Staff cannot edit transactions residing on a closed and locked working day. Contact Admin.");
+      }
+    } else {
+      performEdit();
+    }
+  };
 
   // Calculations for KPI numbers
   const metrics = useMemo(() => {
@@ -5752,117 +6107,208 @@ function TransactionHistoryScreen({
               </span>
             </div>
 
-            <div className="flex items-center gap-3 mb-5">
-              <div className="w-12 h-12 rounded-full bg-surface-container-low flex items-center justify-center text-primary border border-outline-variant/30">
-                <FileText className="w-6 h-6 text-primary" />
-              </div>
-              <div className="flex-1">
-                <h3 className="text-sm font-bold text-on-background leading-relaxed">
-                  {selectedTx.title || 'Recorded Transaction'}
-                </h3>
-                <p className="text-xs text-on-surface-variant font-medium">
-                  Category: <span className="capitalize">{selectedTx.type.replace('_', ' ')}</span>
-                </p>
-              </div>
-            </div>
-
-            <div className="bg-surface-container-low/50 rounded-xl p-4 border border-outline-variant/25 mb-5 space-y-3.5">
-              <div className="flex justify-between items-center pb-2 border-b border-outline-variant/30">
-                <span className="text-xs text-on-surface-variant font-medium">Recorded Value</span>
-                <span className="text-lg font-mono font-bold text-primary">
-                  ₹ {selectedTx.amount.toLocaleString('en-IN')}
-                </span>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 pt-1">
-                <div>
-                  <span className="text-[10px] text-on-surface-variant block uppercase tracking-wide">Date / Time</span>
-                  <span className="text-xs font-semibold text-on-background font-mono block">
-                    {selectedTx.date} {selectedTx.time || '12:00 PM'}
-                  </span>
+            {isEditingTx ? (
+              <div className="space-y-4 animate-in fade-in duration-100">
+                <div className="border-b border-outline-variant pb-2.5">
+                  <h3 className="text-sm font-black text-on-background uppercase tracking-wide">Edit Ledger Entry</h3>
+                  <p className="text-[10px] text-on-surface-variant/80 font-mono mt-0.5">ID: {selectedTx.id}</p>
                 </div>
-                <div>
-                  <span className="text-[10px] text-on-surface-variant block uppercase tracking-wide">Recorded By</span>
-                  <span className="text-xs font-semibold text-on-background block">
-                    {selectedTx.recordedByUserName || 'System'}
-                  </span>
-                </div>
-              </div>
 
-              {selectedTx.patientName && (
-                <div className="pt-2 border-t border-outline-variant/30">
-                  <span className="text-[10px] text-on-surface-variant block uppercase tracking-wide">Patient / Customer Party</span>
-                  <span className="text-xs font-bold text-on-background mt-0.5 block">
-                    {selectedTx.patientName}
-                  </span>
-                </div>
-              )}
+                <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
+                  <div>
+                    <label className="text-[10px] text-on-surface-variant block uppercase tracking-wider font-extrabold mb-1">Title</label>
+                    <input 
+                      type="text" 
+                      value={editTitle}
+                      onChange={(e) => setEditTitle(e.target.value)}
+                      className="w-full bg-surface-container-low text-on-surface text-xs font-semibold p-2.5 rounded-lg border border-outline-variant focus:border-primary outline-none"
+                    />
+                  </div>
 
-              {selectedTx.extraDetails && (
-                <div className="pt-2 border-t border-outline-variant/30">
-                  <span className="text-[10px] text-on-surface-variant block uppercase tracking-wide">Audit Log Tags</span>
-                  <span className="text-xs font-medium text-on-surface-variant mt-0.5 block font-mono">
-                    {selectedTx.extraDetails}
-                  </span>
-                </div>
-              )}
-            </div>
-
-            {/* Adjust counter sales vs standard delete */}
-            {selectedTx.id.startsWith('LGR-COUNTER-') ? (
-              <div className="space-y-3">
-                <div className="bg-surface-container border border-outline-variant/50 rounded-xl p-3.5">
-                  <label className="text-xs font-bold text-on-surface-variant block mb-1.5 uppercase tracking-wide">
-                    Recalibrate Counter Sales (₹)
-                  </label>
-                  <div className="flex gap-2">
+                  <div>
+                    <label className="text-[10px] text-on-surface-variant block uppercase tracking-wider font-extrabold mb-1">Amount (₹)</label>
                     <input 
                       type="number" 
-                      defaultValue={selectedTx.amount}
-                      id="quick-adjust-val"
-                      className="bg-surface-bright border border-outline-variant rounded-lg px-3 py-1 text-sm font-bold font-mono text-on-background focus:border-primary outline-none flex-1"
+                      step="any"
+                      value={editAmount}
+                      onChange={(e) => setEditAmount(e.target.value)}
+                      className="w-full bg-surface-container-low text-on-surface text-xs font-mono font-bold p-2.5 rounded-lg border border-outline-variant focus:border-primary outline-none"
                     />
-                    <button 
-                      onClick={() => {
-                        const val = Number((document.getElementById('quick-adjust-val') as HTMLInputElement)?.value || 0);
-                        if (selectedTx.type === 'counter_cash') {
-                          setCounterCashSales(val);
-                        } else if (selectedTx.type === 'counter_online') {
-                          setCounterOnlineSales(val);
-                        }
-                        setSelectedTx({ ...selectedTx, amount: val });
-                        alert("Consolidated counter sales calibrated successfully!");
-                      }} 
-                      className="px-3 bg-primary text-on-primary text-xs font-bold rounded-lg hover:bg-primary/95 transition-all cursor-pointer"
-                    >
-                      Adjust
-                    </button>
                   </div>
-                  <span className="text-[10px] text-on-surface-variant/70 mt-1.5 block leading-tight">Registers live balance will refresh immediately.</span>
+
+                  <div>
+                    <label className="text-[10px] text-on-surface-variant block uppercase tracking-wider font-extrabold mb-1">Date</label>
+                    <input 
+                      type="date" 
+                      value={editDate}
+                      onChange={(e) => setEditDate(e.target.value)}
+                      className="w-full bg-surface-container-low text-on-surface text-xs font-mono p-2.5 rounded-lg border border-outline-variant focus:border-primary outline-none"
+                    />
+                  </div>
+
+                  {selectedTx.patientName && (
+                    <div>
+                      <label className="text-[10px] text-on-surface-variant block uppercase tracking-wider font-extrabold mb-1">Patient / Customer Party</label>
+                      <input 
+                        type="text" 
+                        value={editPatientName}
+                        onChange={(e) => setEditPatientName(e.target.value)}
+                        className="w-full bg-surface-container-low text-on-surface text-xs font-semibold p-2.5 rounded-lg border border-outline-variant focus:border-primary outline-none"
+                      />
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="text-[10px] text-on-surface-variant block uppercase tracking-wider font-extrabold mb-1">Billing Details / Audit Note</label>
+                    <textarea 
+                      value={editExtraDetails}
+                      onChange={(e) => setEditExtraDetails(e.target.value)}
+                      rows={2}
+                      className="w-full bg-surface-container-low text-on-surface text-xs font-medium p-2.5 rounded-lg border border-outline-variant focus:border-primary outline-none font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex gap-2 pt-2">
+                  <button 
+                    onClick={() => setIsEditingTx(false)}
+                    className="flex-1 h-9 rounded-lg border border-outline-variant text-[11px] font-bold text-on-surface hover:bg-surface-container-low transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    onClick={handleSaveEditTx}
+                    className="flex-1 h-9 rounded-lg bg-primary text-on-primary text-[11px] font-bold shadow-md hover:bg-primary/95 transition-all cursor-pointer"
+                  >
+                    Save
+                  </button>
                 </div>
               </div>
             ) : (
-              <div className="flex gap-2.5">
-                <button 
-                  onClick={() => {
-                    alert(`Transaction ${selectedTx.id} receipt loaded. Print ready.`);
-                  }}
-                  className="flex-1 h-9 rounded-lg border border-outline-variant flex items-center justify-center gap-1.5 text-xs font-bold text-on-background hover:bg-surface-container-low transition-colors cursor-pointer"
-                >
-                  <Printer className="w-3.5 h-3.5" />
-                  Receipt
-                </button>
-                <button 
-                  onClick={() => {
-                    onDeleteTransaction(selectedTx.id);
-                    setSelectedTx(null);
-                  }}
-                  className="flex-1 h-9 rounded-lg bg-error/10 hover:bg-error/20 border border-error/20 flex items-center justify-center gap-1.5 text-xs font-bold text-error transition-colors cursor-pointer"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  Strike Log
-                </button>
-              </div>
+              <>
+                <div className="flex items-center gap-3 mb-5">
+                  <div className="w-12 h-12 rounded-full bg-surface-container-low flex items-center justify-center text-primary border border-outline-variant/30">
+                    <FileText className="w-6 h-6 text-primary" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-sm font-bold text-on-background leading-relaxed">
+                      {selectedTx.title || 'Recorded Transaction'}
+                    </h3>
+                    <p className="text-xs text-on-surface-variant font-medium">
+                      Category: <span className="capitalize">{selectedTx.type.replace('_', ' ')}</span>
+                    </p>
+                  </div>
+                </div>
+
+                <div className="bg-surface-container-low/50 rounded-xl p-4 border border-outline-variant/25 mb-5 space-y-3.5">
+                  <div className="flex justify-between items-center pb-2 border-b border-outline-variant/30">
+                    <span className="text-xs text-on-surface-variant font-medium">Recorded Value</span>
+                    <span className="text-lg font-mono font-bold text-primary">
+                      ₹ {selectedTx.amount.toLocaleString('en-IN')}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 pt-1">
+                    <div>
+                      <span className="text-[10px] text-on-surface-variant block uppercase tracking-wide">Date / Time</span>
+                      <span className="text-xs font-semibold text-on-background font-mono block">
+                        {selectedTx.date} {selectedTx.time || '12:00 PM'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-on-surface-variant block uppercase tracking-wide">Recorded By</span>
+                      <span className="text-xs font-semibold text-on-background block">
+                        {selectedTx.recordedByUserName || 'System'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {selectedTx.patientName && (
+                    <div className="pt-2 border-t border-outline-variant/30">
+                      <span className="text-[10px] text-on-surface-variant block uppercase tracking-wide">Patient / Customer Party</span>
+                      <span className="text-xs font-bold text-on-background mt-0.5 block">
+                        {selectedTx.patientName}
+                      </span>
+                    </div>
+                  )}
+
+                  {selectedTx.extraDetails && (
+                    <div className="pt-2 border-t border-outline-variant/30">
+                      <span className="text-[10px] text-on-surface-variant block uppercase tracking-wide">Audit Log Tags</span>
+                      <span className="text-xs font-medium text-on-surface-variant mt-0.5 block font-mono">
+                        {selectedTx.extraDetails}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Adjust counter sales vs standard delete */}
+                {selectedTx.id.startsWith('LGR-COUNTER-') ? (
+                  <div className="space-y-3">
+                    <div className="bg-surface-container border border-outline-variant/50 rounded-xl p-3.5">
+                      <label className="text-xs font-bold text-on-surface-variant block mb-1.5 uppercase tracking-wide">
+                        Recalibrate Counter Sales (₹)
+                      </label>
+                      <div className="flex gap-2">
+                        <input 
+                          type="number" 
+                          defaultValue={selectedTx.amount}
+                          id="quick-adjust-val"
+                          className="bg-surface-bright border border-outline-variant rounded-lg px-3 py-1 text-sm font-bold font-mono text-on-background focus:border-primary outline-none flex-1"
+                        />
+                        <button 
+                          onClick={() => {
+                            const val = Number((document.getElementById('quick-adjust-val') as HTMLInputElement)?.value || 0);
+                            if (selectedTx.type === 'counter_cash') {
+                              setCounterCashSales(val);
+                            } else if (selectedTx.type === 'counter_online') {
+                              setCounterOnlineSales(val);
+                            }
+                            setSelectedTx({ ...selectedTx, amount: val });
+                            alert("Consolidated counter sales calibrated successfully!");
+                          }} 
+                          className="px-3 bg-primary text-on-primary text-xs font-bold rounded-lg hover:bg-primary/95 transition-all cursor-pointer"
+                        >
+                          Adjust
+                        </button>
+                      </div>
+                      <span className="text-[10px] text-on-surface-variant/70 mt-1.5 block leading-tight">Registers live balance will refresh immediately.</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    <button 
+                      onClick={() => setIsEditingTx(true)}
+                      className="w-full h-10 rounded-lg bg-teal-600 hover:bg-teal-700 text-white flex items-center justify-center gap-1.5 text-xs font-bold transition-all shadow-sm cursor-pointer"
+                    >
+                      <Edit className="w-3.5 h-3.5" />
+                      Edit Ledger Entry
+                    </button>
+
+                    <div className="flex gap-2">
+                      <button 
+                        onClick={() => {
+                          alert(`Transaction ${selectedTx.id} receipt loaded. Print ready.`);
+                        }}
+                        className="flex-1 h-9 rounded-lg border border-outline-variant flex items-center justify-center gap-1.5 text-xs font-bold text-on-background hover:bg-surface-container-low transition-colors cursor-pointer"
+                      >
+                        <Printer className="w-3.5 h-3.5" />
+                        Receipt
+                      </button>
+                      <button 
+                        onClick={() => {
+                          onDeleteTransaction(selectedTx.id);
+                          setSelectedTx(null);
+                        }}
+                        className="flex-1 h-9 rounded-lg bg-error/10 hover:bg-error/20 border border-error/20 flex items-center justify-center gap-1.5 text-xs font-bold text-error transition-colors cursor-pointer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        Strike Log
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>

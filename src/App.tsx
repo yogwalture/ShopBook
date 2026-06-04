@@ -114,29 +114,7 @@ export type Firm = {
   password?: string;
 };
 
-export const INITIAL_FIRMS: Firm[] = [
-  {
-    id: 'F-1001',
-    name: 'Wellcure Pharmacy',
-    adminName: 'Ramesh Mali',
-    email: 'ramesh@wellcure.com',
-    mobile: '9876543210',
-    users: [
-      { name: 'Amit Sharma', id: 'amit_counter', role: 'Counter', mobile: '8765432109' },
-      { name: 'Priya Patel', id: 'priya_sales', role: 'Counter', mobile: '7654321098' },
-    ],
-    status: 'Active'
-  },
-  {
-    id: 'F-1002',
-    name: 'LifeCare Pharmacy',
-    adminName: 'Sunil Patel',
-    email: 'sunil@lifecare.com',
-    mobile: '6543210987',
-    users: [],
-    status: 'Active'
-  }
-];
+export const INITIAL_FIRMS: Firm[] = [];
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState<Page>('welcome');
@@ -197,7 +175,7 @@ export default function App() {
   }, [firms]);
 
   const [currentFirmId, setCurrentFirmId] = useState<string>(() => {
-    return localStorage.getItem('shopbooks_current_firm_id') || 'F-1001';
+    return localStorage.getItem('shopbooks_current_firm_id') || '';
   });
 
   useEffect(() => {
@@ -214,8 +192,14 @@ export default function App() {
 
   const [currentUser, setCurrentUser] = useState<{ id: string; name: string; role: string; mobile: string } | null>(() => {
     const saved = localStorage.getItem('shopbooks_current_user');
-    if (saved) return JSON.parse(saved);
-    return { id: 'amit_counter', name: 'Amit Sharma', role: 'Counter Staff', mobile: '8765432109' };
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        return null;
+      }
+    }
+    return null;
   });
 
   useEffect(() => {

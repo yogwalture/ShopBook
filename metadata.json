@@ -1,6 +1,6 @@
 {
-  "name": "",
-  "description": "",
+  "name": "ShopBooks",
+  "description": "A secure, offline-first pharmacy counter ledger and daily cash register designed for smooth shop transactions, daily closing, and reports.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

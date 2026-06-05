@@ -1,0 +1,44 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global catch-all safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Global helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isMasterAdmin() {
+      return isSignedIn() &&
+             request.auth.token.email == "yogwalture@gmail.com" &&
+             request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Rules for Firms
+    match /firms/{firmId} {
+      allow read, write: if true;
+    }
+
+    // Rules for Transactions
+    match /transactions/{transactionId} {
+      allow read, write: if true;
+    }
+
+    // Rules for Customers
+    match /customers/{customerId} {
+      allow read, write: if true;
+    }
+
+    // Rules for Daily Registers
+    match /firmDailyRegisters/{registerId} {
+      allow read, write: if true;
+    }
+  }
+}

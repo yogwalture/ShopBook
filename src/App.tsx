@@ -56,9 +56,25 @@ import {
   Upload,
   ShieldCheck,
 } from 'lucide-react';
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { CalendarDatePicker } from './components/CalendarDatePicker';
 import { jsPDF } from 'jspdf';
+import {
+  testFirestoreConnection,
+  setupSessionAutologin,
+  dbFetchFirms,
+  dbSaveFirm,
+  dbDeleteFirm,
+  dbFetchTransactions,
+  dbSaveTransaction,
+  dbDeleteTransaction,
+  dbFetchCustomers,
+  dbSaveCustomer,
+  dbFetchDailyRegisters,
+  dbSaveDailyRegister,
+  triggerGoogleSignIn,
+  triggerSignOut,
+} from './firebase';
 import {
   ResponsiveContainer,
   LineChart,
@@ -153,7 +169,7 @@ export default function App() {
     visible: boolean;
   } | null>(null);
   
-  const [firms, setFirms] = useState<Firm[]>(() => {
+  const [firms, setFirmsState] = useState<Firm[]>(() => {
     const saved = localStorage.getItem('shopbooks_firms');
     if (saved) {
       try {
@@ -170,6 +186,26 @@ export default function App() {
     }
     return INITIAL_FIRMS;
   });
+
+  const setFirms = useCallback((nextVal: Firm[] | ((prev: Firm[]) => Firm[])) => {
+    setFirmsState(prev => {
+      const next = typeof nextVal === 'function' ? nextVal(prev) : nextVal;
+      const prevIds = new Set(prev.map(f => f.id));
+      const nextIds = new Set(next.map(f => f.id));
+      next.forEach(f => {
+        const oldF = prev.find(p => p.id === f.id);
+        if (!oldF || JSON.stringify(oldF) !== JSON.stringify(f)) {
+          dbSaveFirm(f);
+        }
+      });
+      prev.forEach(f => {
+        if (!nextIds.has(f.id)) {
+          dbDeleteFirm(f.id);
+        }
+      });
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     localStorage.setItem('shopbooks_firms', JSON.stringify(firms));
@@ -211,23 +247,117 @@ export default function App() {
     }
   }, [currentUser]);
 
-  const [transactions, setTransactions] = useState<Transaction[]>(() => {
+  const [transactions, setTransactionsState] = useState<Transaction[]>(() => {
     const saved = localStorage.getItem('shopbooks_transactions');
     return saved ? JSON.parse(saved) : [];
   });
+
+  const setTransactions = useCallback((nextVal: Transaction[] | ((prev: Transaction[]) => Transaction[])) => {
+    setTransactionsState(prev => {
+      const next = typeof nextVal === 'function' ? nextVal(prev) : nextVal;
+      const prevIds = new Set(prev.map(t => t.id));
+      const nextIds = new Set(next.map(t => t.id));
+      next.forEach(t => {
+        const oldT = prev.find(p => p.id === t.id);
+        if (!oldT || JSON.stringify(oldT) !== JSON.stringify(t)) {
+          dbSaveTransaction(t);
+        }
+      });
+      prev.forEach(t => {
+        if (!nextIds.has(t.id)) {
+          dbDeleteTransaction(t.id);
+        }
+      });
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     localStorage.setItem('shopbooks_transactions', JSON.stringify(transactions));
   }, [transactions]);
 
-  const [customers, setCustomers] = useState<Customer[]>(() => {
+  const [customers, setCustomersState] = useState<Customer[]>(() => {
     const saved = localStorage.getItem('shopbooks_customers');
     return saved ? JSON.parse(saved) : [];
   });
 
+  const setCustomers = useCallback((nextVal: Customer[] | ((prev: Customer[]) => Customer[])) => {
+    setCustomersState(prev => {
+      const next = typeof nextVal === 'function' ? nextVal(prev) : nextVal;
+      const prevIds = new Set(prev.map(c => c.id));
+      const nextIds = new Set(next.map(c => c.id));
+      next.forEach(c => {
+        const oldC = prev.find(p => p.id === c.id);
+        if (!oldC || JSON.stringify(oldC) !== JSON.stringify(c)) {
+          dbSaveCustomer(c);
+        }
+      });
+      prev.forEach(c => {
+        if (!nextIds.has(c.id)) {
+          try {
+            import('firebase/firestore').then(({ doc, deleteDoc }) => {
+              import('./firebase').then(({ db }) => {
+                deleteDoc(doc(db, 'customers', c.id));
+              });
+            });
+          } catch(e) {
+            console.error(e);
+          }
+        }
+      });
+      return next;
+    });
+  }, []);
+
   useEffect(() => {
     localStorage.setItem('shopbooks_customers', JSON.stringify(customers));
   }, [customers]);
+
+  const [isFirebaseLoading, setIsFirebaseLoading] = useState(true);
+
+  // Connection validation + session auto-login + initial collections load
+  useEffect(() => {
+    testFirestoreConnection();
+
+    // 1. Setup Session Listener
+    const unsubAuth = setupSessionAutologin((firebaseUser) => {
+      if (firebaseUser?.email === 'yogwalture@gmail.com') {
+        setUserRole('firmAdmin');
+        setCurrentPage('masterAdmin');
+        setCurrentUser({
+          id: 'master_super_admin',
+          name: 'Master Super Admin (yogwalture@gmail.com)',
+          role: 'Master Admin',
+          mobile: 'yogwalture@gmail.com'
+        });
+      }
+    });
+
+    // 2. Fetch all collections from Firestore on mount
+    const initDb = async () => {
+      try {
+        const [fList, txList, cList, rList] = await Promise.all([
+          dbFetchFirms(),
+          dbFetchTransactions(),
+          dbFetchCustomers(),
+          dbFetchDailyRegisters()
+        ]);
+        if (fList.length > 0) setFirmsState(fList);
+        if (txList.length > 0) setTransactionsState(txList);
+        if (cList.length > 0) setCustomersState(cList);
+        if (rList && Object.keys(rList).length > 0) setFirmDailyRegistersState(rList);
+      } catch (err) {
+        console.error("Failed to load initial Firestore data:", err);
+      } finally {
+        setIsFirebaseLoading(false);
+      }
+    };
+    initDb();
+
+    return () => {
+      unsubAuth();
+    };
+  }, []);
 
   const isMainPage = currentPage === 'dashboard' || currentPage === 'credit';
   const isAuthPage = currentPage === 'welcome' || currentPage === 'login' || currentPage === 'registerFirm';
@@ -345,10 +475,24 @@ export default function App() {
     localStorage.setItem('shopbooks_working_date', workingDate);
   }, [workingDate]);
 
-  const [firmDailyRegisters, setFirmDailyRegisters] = useState<Record<string, { opening: number; cashSales: number; onlineSales: number; closed: boolean; forwarded?: number }>>(() => {
+  const [firmDailyRegisters, setFirmDailyRegistersState] = useState<Record<string, { opening: number; cashSales: number; onlineSales: number; closed: boolean; forwarded?: number }>>(() => {
     const saved = localStorage.getItem('shopbooks_daily_registers');
     return saved ? JSON.parse(saved) : {};
   });
+
+  const setFirmDailyRegisters = useCallback((nextVal: Record<string, { opening: number; cashSales: number; onlineSales: number; closed: boolean; forwarded?: number }> | ((prev: Record<string, { opening: number; cashSales: number; onlineSales: number; closed: boolean; forwarded?: number }>) => Record<string, { opening: number; cashSales: number; onlineSales: number; closed: boolean; forwarded?: number }>)) => {
+    setFirmDailyRegistersState(prev => {
+      const next = typeof nextVal === 'function' ? nextVal(prev) : nextVal;
+      Object.keys(next).forEach(key => {
+        const oldReg = prev[key];
+        const newReg = next[key];
+        if (!oldReg || JSON.stringify(oldReg) !== JSON.stringify(newReg)) {
+          dbSaveDailyRegister(key, newReg);
+        }
+      });
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     localStorage.setItem('shopbooks_daily_registers', JSON.stringify(firmDailyRegisters));
@@ -554,7 +698,30 @@ export default function App() {
     setCurrentPage('dashboard');
   };
 
+  const handleGoogleSignInFlow = async () => {
+    try {
+      const u = await triggerGoogleSignIn();
+      if (u && u.email === 'yogwalture@gmail.com') {
+        setUserRole('firmAdmin');
+        setCurrentUser({
+          id: 'master_super_admin',
+          name: 'Master Super Admin (yogwalture@gmail.com)',
+          role: 'Master Admin',
+          mobile: 'yogwalture@gmail.com'
+        });
+        setCurrentPage('masterAdmin');
+        alert("Welcome Master Super Admin (yogwalture@gmail.com)!");
+      } else {
+        alert("Access Denied: Google login is reserved for the Master Admin (yogwalture@gmail.com).");
+        await triggerSignOut();
+      }
+    } catch (err) {
+      alert("Google Sign In failed or cancelled.");
+    }
+  };
+
   const handleLogout = () => {
+    triggerSignOut();
     setUserRole('user');
     setCurrentPage('welcome');
   };
@@ -584,8 +751,8 @@ export default function App() {
         </>
       )}
 
-      {currentPage === 'welcome' && <WelcomeScreen onNavigate={setCurrentPage} />}
-      {currentPage === 'login' && <LoginScreen onNavigate={setCurrentPage} onLogin={handleLogin} firms={firms} />}
+      {currentPage === 'welcome' && <WelcomeScreen onNavigate={setCurrentPage} onGoogleLogin={handleGoogleSignInFlow} />}
+      {currentPage === 'login' && <LoginScreen onNavigate={setCurrentPage} onLogin={handleLogin} onGoogleLogin={handleGoogleSignInFlow} firms={firms} />}
       {currentPage === 'registerFirm' && <RegisterFirmScreen onNavigate={setCurrentPage} onRegister={(firm) => { setFirms([...firms, firm]); setCurrentFirmId(firm.id); setUserRole('firmAdmin'); setCurrentPage('firmAdmin'); }} />}
       {currentPage === 'firmAdmin' && (
         <FirmAdminScreen 
@@ -6509,7 +6676,7 @@ function SchemeCreditSaleScreen({
   );
 }
 
-function WelcomeScreen({ onNavigate }: { onNavigate: (page: Page) => void }) {
+function WelcomeScreen({ onNavigate, onGoogleLogin }: { onNavigate: (page: Page) => void, onGoogleLogin: () => void }) {
   return (
     <div className="min-h-[100dvh] flex flex-col justify-center items-center px-container-padding-mobile relative overflow-hidden bg-surface-container-lowest">
       <div className="absolute top-0 left-0 w-full h-1/2 bg-surface-container-highest opacity-30 -z-10" />
@@ -6537,15 +6704,15 @@ function WelcomeScreen({ onNavigate }: { onNavigate: (page: Page) => void }) {
       </div>
 
       <div className="absolute bottom-6 w-full text-center">
-        <button className="text-label-md text-on-surface-variant hover:text-primary transition-colors cursor-pointer p-2" onClick={() => onNavigate('masterAdmin')}>
-          Master Admin Login
+        <button className="text-label-md text-on-surface-variant hover:text-primary transition-colors cursor-pointer p-2 font-semibold" onClick={onGoogleLogin}>
+          🔐 Master Admin Secure Log-in
         </button>
       </div>
     </div>
   );
 }
 
-function LoginScreen({ onNavigate, onLogin, firms }: { onNavigate: (page: Page) => void, onLogin: (firmId: string, role: 'user' | 'firmAdmin', userId: string, userName: string, userMobile: string, loginWorkingDate?: string) => void, firms: Firm[] }) {
+function LoginScreen({ onNavigate, onLogin, onGoogleLogin, firms }: { onNavigate: (page: Page) => void, onLogin: (firmId: string, role: 'user' | 'firmAdmin', userId: string, userName: string, userMobile: string, loginWorkingDate?: string) => void, onGoogleLogin: () => void, firms: Firm[] }) {
   const [role, setRole] = useState<'user' | 'firmAdmin'>('user');
   const [selectedFirmId, setSelectedFirmId] = useState(() => firms[0]?.id || '');
   const [userId, setUserId] = useState('');
@@ -6652,16 +6819,23 @@ function LoginScreen({ onNavigate, onLogin, firms }: { onNavigate: (page: Page) 
           </div>
 
           <div className="flex flex-col gap-1">
-            <label className="text-label-md text-on-surface font-semibold" htmlFor="login_userid">User ID / Email *</label>
+            <label className="text-label-md text-on-surface font-semibold" htmlFor="login_userid">
+              {role === 'firmAdmin' ? "Firm Admin Username / Email *" : "Counter User ID *"}
+            </label>
             <input 
               id="login_userid"
               className="bg-surface-bright border border-outline-variant rounded-lg px-4 py-3 text-body-md text-on-background focus:border-secondary outline-none transition-colors" 
-              placeholder={role === 'firmAdmin' ? "e.g. ramesh@saimedicals.com" : "e.g. amit_counter"} 
+              placeholder={role === 'firmAdmin' ? "e.g. ramesh@saimedicals.com (or 'admin')" : "e.g. amit_counter"} 
               type="text" 
               value={userId}
               onChange={(e) => setUserId(e.target.value)}
               required
             />
+            {role === 'firmAdmin' && (
+              <span className="text-[10px] text-on-surface-variant font-medium mt-0.5">
+                🔒 Custom Email/Username & Password login. Google Account login is NOT required.
+              </span>
+            )}
           </div>
 
           <div className="flex flex-col gap-1">

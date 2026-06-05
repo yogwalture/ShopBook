@@ -1,0 +1,90 @@
+{
+  "entities": {
+    "Firm": {
+      "title": "Firm",
+      "description": "Details of registered pharmacy business unit",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique firm ID" },
+        "name": { "type": "string", "description": "Business unit name" },
+        "adminName": { "type": "string", "description": "Name of the key administrator" },
+        "email": { "type": "string", "description": "Business contact email" },
+        "mobile": { "type": "string", "description": "Mobile contact number" },
+        "status": { "type": "string", "enum": ["Active", "Inactive"] },
+        "password": { "type": "string", "description": "Access password for the firm admin" },
+        "users": {
+          "type": "array",
+          "description": "Registered counter staff users"
+        }
+      },
+      "required": ["id", "name", "adminName", "email", "mobile", "status"]
+    },
+    "Transaction": {
+      "title": "Transaction",
+      "description": "Financial ledger transactions including sales, receipts and operational expenses",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "firmId": { "type": "string" },
+        "type": { "type": "string", "enum": ["credit_sale", "receive_payment", "supplier_payment", "scheme_bill", "staff_credit", "staff_advance"] },
+        "title": { "type": "string" },
+        "patientName": { "type": "string" },
+        "customerPhone": { "type": "string" },
+        "amount": { "type": "number" },
+        "date": { "type": "string" },
+        "time": { "type": "string" },
+        "salesmanName": { "type": "string" },
+        "recordedByUserId": { "type": "string" },
+        "recordedByUserName": { "type": "string" },
+        "extraDetails": { "type": "string" }
+      },
+      "required": ["id", "firmId", "type", "title", "amount", "date", "time", "recordedByUserId", "recordedByUserName"]
+    },
+    "Customer": {
+      "title": "Customer",
+      "description": "Database of regular customers and their outstanding ledger balances",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "firmId": { "type": "string" },
+        "name": { "type": "string" },
+        "phone": { "type": "string" },
+        "status": { "type": "string", "enum": ["Overdue", "Pending", "Paid"] },
+        "pendingBalance": { "type": "number" },
+        "lastPaymentDate": { "type": "string" }
+      },
+      "required": ["id", "firmId", "name", "phone", "status", "pendingBalance", "lastPaymentDate"]
+    },
+    "FirmDailyRegister": {
+      "title": "FirmDailyRegister",
+      "description": "Register of daily cash flow, counters, opening, and closing statuses",
+      "type": "object",
+      "properties": {
+        "opening": { "type": "number" },
+        "cashSales": { "type": "number" },
+        "onlineSales": { "type": "number" },
+        "closed": { "type": "boolean" },
+        "forwarded": { "type": "number" }
+      },
+      "required": ["opening", "cashSales", "onlineSales", "closed"]
+    }
+  },
+  "firestore": {
+    "/firms/{firmId}": {
+      "schema": "Firm",
+      "description": "Firms directory"
+    },
+    "/transactions/{transactionId}": {
+      "schema": "Transaction",
+      "description": "Consolidated financial ledger items"
+    },
+    "/customers/{customerId}": {
+      "schema": "Customer",
+      "description": "Outstanding customer register profiles"
+    },
+    "/firmDailyRegisters/{registerId}": {
+      "schema": "FirmDailyRegister",
+      "description": "Register tracking daily lock/open state balances"
+    }
+  }
+}

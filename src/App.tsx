@@ -333,7 +333,7 @@ export default function App() {
       }
     });
 
-    // 2. Fetch all collections from Firestore on mount
+    // 2. Fetch and merge all collections with Firestore bi-directionally on mount
     const initDb = async () => {
       try {
         const [fList, txList, cList, rList] = await Promise.all([
@@ -342,12 +342,53 @@ export default function App() {
           dbFetchCustomers(),
           dbFetchDailyRegisters()
         ]);
-        if (fList.length > 0) setFirmsState(fList);
-        if (txList.length > 0) setTransactionsState(txList);
-        if (cList.length > 0) setCustomersState(cList);
-        if (rList && Object.keys(rList).length > 0) setFirmDailyRegistersState(rList);
+
+        // Bi-directional Merge for Firms
+        const cloudFirmsMap = new Map(fList.map(f => [f.id, f]));
+        const mergedFirms = [...fList];
+        for (const f of firms) {
+          if (!cloudFirmsMap.has(f.id)) {
+            await dbSaveFirm(f);
+            mergedFirms.push(f);
+          }
+        }
+        setFirmsState(mergedFirms);
+
+        // Bi-directional Merge for Transactions
+        const cloudTxMap = new Map(txList.map(t => [t.id, t]));
+        const mergedTx = [...txList];
+        for (const t of transactions) {
+          if (!cloudTxMap.has(t.id)) {
+            await dbSaveTransaction(t);
+            mergedTx.push(t);
+          }
+        }
+        setTransactionsState(mergedTx);
+
+        // Bi-directional Merge for Customers
+        const cloudCustMap = new Map(cList.map(c => [c.id, c]));
+        const mergedCust = [...cList];
+        for (const c of customers) {
+          if (!cloudCustMap.has(c.id)) {
+            await dbSaveCustomer(c);
+            mergedCust.push(c);
+          }
+        }
+        setCustomersState(mergedCust);
+
+        // Bi-directional Merge for Daily Registers
+        const rListSafe = rList || {};
+        const mergedRegisters = { ...rListSafe };
+        for (const [key, reg] of Object.entries(firmDailyRegisters)) {
+          if (!(key in rListSafe)) {
+            await dbSaveDailyRegister(key, reg);
+            mergedRegisters[key] = reg;
+          }
+        }
+        setFirmDailyRegistersState(mergedRegisters);
+
       } catch (err) {
-        console.error("Failed to load initial Firestore data:", err);
+        console.error("Failed to load and sync initial Firestore data:", err);
       } finally {
         setIsFirebaseLoading(false);
       }
@@ -727,6 +768,18 @@ export default function App() {
   };
 
   const isDayClosed = !!firmDailyRegisters[`${currentFirmId}_${workingDate}`]?.closed;
+
+  if (isFirebaseLoading) {
+    return (
+      <div className="min-h-screen bg-surface-container-lowest flex flex-col justify-center items-center p-6 text-center">
+        <div className="bg-white p-8 rounded-2xl border border-outline-variant shadow-sm max-w-sm w-full flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+          <h2 className="text-headline-md font-bold text-primary font-sans text-xl">ShopBooks UPI Ledgers</h2>
+          <p className="text-body-md text-on-surface-variant font-medium text-sm">Securing cloud connection & synchronizing records...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={wrapperClass}>
@@ -6716,6 +6769,12 @@ function LoginScreen({ onNavigate, onLogin, onGoogleLogin, firms }: { onNavigate
   const [role, setRole] = useState<'user' | 'firmAdmin'>('user');
   const [selectedFirmId, setSelectedFirmId] = useState(() => firms[0]?.id || '');
   const [userId, setUserId] = useState('');
+
+  useEffect(() => {
+    if (!selectedFirmId && firms.length > 0) {
+      setSelectedFirmId(firms[0].id);
+    }
+  }, [firms, selectedFirmId]);
   const [password, setPassword] = useState('');
   const [loginWorkingDate, setLoginWorkingDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [errorMsg, setErrorMsg] = useState('');

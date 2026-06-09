@@ -74,6 +74,10 @@ import {
   dbSaveDailyRegister,
   triggerGoogleSignIn,
   triggerSignOut,
+  dbSubscribeFirms,
+  dbSubscribeTransactions,
+  dbSubscribeCustomers,
+  dbSubscribeDailyRegisters,
 } from './firebase';
 import {
   ResponsiveContainer,
@@ -313,93 +317,6 @@ export default function App() {
     localStorage.setItem('shopbooks_customers', JSON.stringify(customers));
   }, [customers]);
 
-  const [isFirebaseLoading, setIsFirebaseLoading] = useState(true);
-
-  // Connection validation + session auto-login + initial collections load
-  useEffect(() => {
-    testFirestoreConnection();
-
-    // 1. Setup Session Listener
-    const unsubAuth = setupSessionAutologin((firebaseUser) => {
-      if (firebaseUser?.email === 'yogwalture@gmail.com') {
-        setUserRole('firmAdmin');
-        setCurrentPage('masterAdmin');
-        setCurrentUser({
-          id: 'master_super_admin',
-          name: 'Master Super Admin (yogwalture@gmail.com)',
-          role: 'Master Admin',
-          mobile: 'yogwalture@gmail.com'
-        });
-      }
-    });
-
-    // 2. Fetch and merge all collections with Firestore bi-directionally on mount
-    const initDb = async () => {
-      try {
-        const [fList, txList, cList, rList] = await Promise.all([
-          dbFetchFirms(),
-          dbFetchTransactions(),
-          dbFetchCustomers(),
-          dbFetchDailyRegisters()
-        ]);
-
-        // Bi-directional Merge for Firms
-        const cloudFirmsMap = new Map(fList.map(f => [f.id, f]));
-        const mergedFirms = [...fList];
-        for (const f of firms) {
-          if (!cloudFirmsMap.has(f.id)) {
-            await dbSaveFirm(f);
-            mergedFirms.push(f);
-          }
-        }
-        setFirmsState(mergedFirms);
-
-        // Bi-directional Merge for Transactions
-        const cloudTxMap = new Map(txList.map(t => [t.id, t]));
-        const mergedTx = [...txList];
-        for (const t of transactions) {
-          if (!cloudTxMap.has(t.id)) {
-            await dbSaveTransaction(t);
-            mergedTx.push(t);
-          }
-        }
-        setTransactionsState(mergedTx);
-
-        // Bi-directional Merge for Customers
-        const cloudCustMap = new Map(cList.map(c => [c.id, c]));
-        const mergedCust = [...cList];
-        for (const c of customers) {
-          if (!cloudCustMap.has(c.id)) {
-            await dbSaveCustomer(c);
-            mergedCust.push(c);
-          }
-        }
-        setCustomersState(mergedCust);
-
-        // Bi-directional Merge for Daily Registers
-        const rListSafe = rList || {};
-        const mergedRegisters = { ...rListSafe };
-        for (const [key, reg] of Object.entries(firmDailyRegisters)) {
-          if (!(key in rListSafe)) {
-            await dbSaveDailyRegister(key, reg);
-            mergedRegisters[key] = reg;
-          }
-        }
-        setFirmDailyRegistersState(mergedRegisters);
-
-      } catch (err) {
-        console.error("Failed to load and sync initial Firestore data:", err);
-      } finally {
-        setIsFirebaseLoading(false);
-      }
-    };
-    initDb();
-
-    return () => {
-      unsubAuth();
-    };
-  }, []);
-
   const isMainPage = currentPage === 'dashboard' || currentPage === 'credit';
   const isAuthPage = currentPage === 'welcome' || currentPage === 'login' || currentPage === 'registerFirm';
   const isAdminPage = currentPage === 'firmAdmin' || currentPage === 'masterAdmin';
@@ -538,6 +455,117 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('shopbooks_daily_registers', JSON.stringify(firmDailyRegisters));
   }, [firmDailyRegisters]);
+
+  const [firmsLoaded, setFirmsLoaded] = useState(false);
+  const [txLoaded, setTxLoaded] = useState(false);
+  const [custLoaded, setCustLoaded] = useState(false);
+  const [regLoaded, setRegLoaded] = useState(false);
+
+  const firmsRef = React.useRef(firms);
+  const transactionsRef = React.useRef(transactions);
+  const customersRef = React.useRef(customers);
+  const firmDailyRegistersRef = React.useRef(firmDailyRegisters);
+
+  useEffect(() => { firmsRef.current = firms; }, [firms]);
+  useEffect(() => { transactionsRef.current = transactions; }, [transactions]);
+  useEffect(() => { customersRef.current = customers; }, [customers]);
+  useEffect(() => { firmDailyRegistersRef.current = firmDailyRegisters; }, [firmDailyRegisters]);
+
+  const [isFirebaseLoading, setIsFirebaseLoading] = useState(true);
+
+  useEffect(() => {
+    if (firmsLoaded && txLoaded && custLoaded && regLoaded) {
+      setIsFirebaseLoading(false);
+    }
+  }, [firmsLoaded, txLoaded, custLoaded, regLoaded]);
+
+  // Connection validation + session auto-login + initial collections load
+  useEffect(() => {
+    testFirestoreConnection();
+
+    // 1. Setup Session Listener
+    const unsubAuth = setupSessionAutologin((firebaseUser) => {
+      if (firebaseUser?.email === 'yogwalture@gmail.com') {
+        setUserRole('firmAdmin');
+        setCurrentPage('masterAdmin');
+        setCurrentUser({
+          id: 'master_super_admin',
+          name: 'Master Super Admin (yogwalture@gmail.com)',
+          role: 'Master Admin',
+          mobile: 'yogwalture@gmail.com'
+        });
+      }
+    });
+
+    // 2. Set up real-time firebase listeners and bi-directional merge
+    const unsubFirms = dbSubscribeFirms((fList) => {
+      const cloudFirmsMap = new Map(fList.map(f => [f.id, f]));
+      const mergedFirms = [...fList];
+      for (const f of firmsRef.current) {
+        if (!cloudFirmsMap.has(f.id)) {
+          dbSaveFirm(f);
+          mergedFirms.push(f);
+        }
+      }
+      setFirmsState(mergedFirms);
+      setFirmsLoaded(true);
+    }, (err) => {
+      setFirmsLoaded(true);
+    });
+
+    const unsubTransactions = dbSubscribeTransactions((txList) => {
+      const cloudTxMap = new Map(txList.map(t => [t.id, t]));
+      const mergedTx = [...txList];
+      for (const t of transactionsRef.current) {
+        if (!cloudTxMap.has(t.id)) {
+          dbSaveTransaction(t);
+          mergedTx.push(t);
+        }
+      }
+      setTransactionsState(mergedTx);
+      setTxLoaded(true);
+    }, (err) => {
+      setTxLoaded(true);
+    });
+
+    const unsubCustomers = dbSubscribeCustomers((cList) => {
+      const cloudCustMap = new Map(cList.map(c => [c.id, c]));
+      const mergedCust = [...cList];
+      for (const c of customersRef.current) {
+        if (!cloudCustMap.has(c.id)) {
+          dbSaveCustomer(c);
+          mergedCust.push(c);
+        }
+      }
+      setCustomersState(mergedCust);
+      setCustLoaded(true);
+    }, (err) => {
+      setCustLoaded(true);
+    });
+
+    const unsubRegisters = dbSubscribeDailyRegisters((rList) => {
+      const rListSafe = rList || {};
+      const mergedRegisters = { ...rListSafe };
+      for (const [key, reg] of Object.entries(firmDailyRegistersRef.current)) {
+        if (!(key in rListSafe)) {
+          dbSaveDailyRegister(key, reg);
+          mergedRegisters[key] = reg;
+        }
+      }
+      setFirmDailyRegistersState(mergedRegisters);
+      setRegLoaded(true);
+    }, (err) => {
+      setRegLoaded(true);
+    });
+
+    return () => {
+      unsubAuth();
+      unsubFirms();
+      unsubTransactions();
+      unsubCustomers();
+      unsubRegisters();
+    };
+  }, []);
 
   const [openingCash, setOpeningCash] = useState<number>(0);
   const [counterCashSales, setCounterCashSales] = useState<number>(0);
@@ -806,13 +834,13 @@ export default function App() {
 
       {currentPage === 'welcome' && <WelcomeScreen onNavigate={setCurrentPage} onGoogleLogin={handleGoogleSignInFlow} />}
       {currentPage === 'login' && <LoginScreen onNavigate={setCurrentPage} onLogin={handleLogin} onGoogleLogin={handleGoogleSignInFlow} firms={firms} />}
-      {currentPage === 'registerFirm' && <RegisterFirmScreen onNavigate={setCurrentPage} onRegister={(firm) => { setFirms([...firms, firm]); setCurrentFirmId(firm.id); setUserRole('firmAdmin'); setCurrentPage('firmAdmin'); }} />}
+      {currentPage === 'registerFirm' && <RegisterFirmScreen onNavigate={setCurrentPage} onRegister={(firm) => { setFirms(prev => [...prev, firm]); setCurrentFirmId(firm.id); setUserRole('firmAdmin'); setCurrentPage('firmAdmin'); }} />}
       {currentPage === 'firmAdmin' && (
         <FirmAdminScreen 
           onNavigate={setCurrentPage} 
           onLogout={handleLogout} 
           activeFirm={firms.find(f => f.id === currentFirmId)} 
-          onUpdateFirm={(updatedFirm) => setFirms(firms.map(f => f.id === updatedFirm.id ? updatedFirm : f))} 
+          onUpdateFirm={(updatedFirm) => setFirms(prev => prev.map(f => f.id === updatedFirm.id ? updatedFirm : f))} 
           transactions={transactions}
           setTransactions={setTransactions}
           customers={customers}
@@ -826,8 +854,8 @@ export default function App() {
         <MasterAdminScreen 
           onNavigate={setCurrentPage} 
           firms={firms} 
-          onUpdateFirm={(updatedFirm) => setFirms(firms.map(f => f.id === updatedFirm.id ? updatedFirm : f))} 
-          onDeleteFirm={(firmId) => setFirms(firms.filter(f => f.id !== firmId))} 
+          onUpdateFirm={(updatedFirm) => setFirms(prev => prev.map(f => f.id === updatedFirm.id ? updatedFirm : f))} 
+          onDeleteFirm={(firmId) => setFirms(prev => prev.filter(f => f.id !== firmId))} 
           transactions={transactions}
           setTransactions={setTransactions}
           customers={customers}

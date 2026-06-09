@@ -15,7 +15,8 @@ import {
   getDocFromServer,
   doc, 
   setDoc, 
-  deleteDoc
+  deleteDoc,
+  onSnapshot
 } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
@@ -227,4 +228,52 @@ export async function triggerSignOut() {
   } catch (err) {
     console.error("Sign out failed:", err);
   }
+}
+
+// 4. Real-time Subscription Help Functions
+export function dbSubscribeFirms(onUpdate: (firms: any[]) => void, onError?: (err: Error) => void) {
+  const path = 'firms';
+  return onSnapshot(collection(db, path), (snap) => {
+    const data = snap.docs.map(doc => doc.data());
+    onUpdate(data);
+  }, (err) => {
+    handleFirestoreError(err, OperationType.LIST, path);
+    if (onError) onError(err);
+  });
+}
+
+export function dbSubscribeTransactions(onUpdate: (txs: any[]) => void, onError?: (err: Error) => void) {
+  const path = 'transactions';
+  return onSnapshot(collection(db, path), (snap) => {
+    const data = snap.docs.map(doc => doc.data());
+    onUpdate(data);
+  }, (err) => {
+    handleFirestoreError(err, OperationType.LIST, path);
+    if (onError) onError(err);
+  });
+}
+
+export function dbSubscribeCustomers(onUpdate: (custs: any[]) => void, onError?: (err: Error) => void) {
+  const path = 'customers';
+  return onSnapshot(collection(db, path), (snap) => {
+    const data = snap.docs.map(doc => doc.data());
+    onUpdate(data);
+  }, (err) => {
+    handleFirestoreError(err, OperationType.LIST, path);
+    if (onError) onError(err);
+  });
+}
+
+export function dbSubscribeDailyRegisters(onUpdate: (registers: Record<string, any>) => void, onError?: (err: Error) => void) {
+  const path = 'firmDailyRegisters';
+  return onSnapshot(collection(db, path), (snap) => {
+    const result: Record<string, any> = {};
+    snap.docs.forEach(doc => {
+      result[doc.id] = doc.data();
+    });
+    onUpdate(result);
+  }, (err) => {
+    handleFirestoreError(err, OperationType.LIST, path);
+    if (onError) onError(err);
+  });
 }

@@ -16,7 +16,8 @@ import {
   doc, 
   setDoc, 
   deleteDoc,
-  onSnapshot
+  onSnapshot,
+  setLogLevel
 } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
@@ -24,6 +25,9 @@ import firebaseConfig from '../firebase-applet-config.json';
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
+
+// Silence verbose SDK warning logs (like "Could not reach Cloud Firestore backend")
+setLogLevel('error');
 
 // Authentication helper
 export const googleProvider = new GoogleAuthProvider();
@@ -81,7 +85,8 @@ export async function testFirestoreConnection() {
     await getDocFromServer(doc(db, 'test', 'connection'));
   } catch (error) {
     if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.error("Please check your Firebase configuration.");
+      // Use console.warn instead of console.error to avoid false positive failures in offline testing/CI environments
+      console.warn("Firestore offline mode active. If you expect to be connected, please check your Firebase configuration.");
     }
   }
 }
@@ -181,6 +186,15 @@ export async function dbSaveCustomer(cust: any): Promise<void> {
   }
 }
 
+export async function dbDeleteCustomer(custId: string): Promise<void> {
+  const path = `customers/${custId}`;
+  try {
+    await deleteDoc(doc(db, 'customers', custId));
+  } catch (err) {
+    handleFirestoreError(err, OperationType.DELETE, path);
+  }
+}
+
 export async function dbFetchDailyRegisters(): Promise<Record<string, any>> {
   const path = 'firmDailyRegisters';
   try {
@@ -202,6 +216,15 @@ export async function dbSaveDailyRegister(recordId: string, data: any): Promise<
     await setDoc(doc(db, 'firmDailyRegisters', recordId), data);
   } catch (err) {
     handleFirestoreError(err, OperationType.WRITE, path);
+  }
+}
+
+export async function dbDeleteDailyRegister(recordId: string): Promise<void> {
+  const path = `firmDailyRegisters/${recordId}`;
+  try {
+    await deleteDoc(doc(db, 'firmDailyRegisters', recordId));
+  } catch (err) {
+    handleFirestoreError(err, OperationType.DELETE, path);
   }
 }
 

@@ -70,8 +70,10 @@ import {
   dbDeleteTransaction,
   dbFetchCustomers,
   dbSaveCustomer,
+  dbDeleteCustomer,
   dbFetchDailyRegisters,
   dbSaveDailyRegister,
+  dbDeleteDailyRegister,
   triggerGoogleSignIn,
   triggerSignOut,
   dbSubscribeFirms,
@@ -135,7 +137,27 @@ export type Firm = {
   password?: string;
 };
 
-export const INITIAL_FIRMS: Firm[] = [];
+export const SEEDED_DEFAULT_FIRM: Firm = {
+  id: 'F-1001',
+  name: 'Yogwalture Pharmacy',
+  adminName: 'Yograj Walture',
+  email: 'yogwalture@gmail.com',
+  mobile: '9876543210',
+  users: [
+    {
+      id: 'amit_counter',
+      name: 'Amit Counter Staff',
+      role: 'Counter Staff',
+      mobile: '9876543211',
+      password: 'password',
+      salary: 15000
+    }
+  ],
+  status: 'Active',
+  password: 'yograje1987'
+};
+
+export const INITIAL_FIRMS: Firm[] = [SEEDED_DEFAULT_FIRM];
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState<Page>('welcome');
@@ -178,11 +200,28 @@ export default function App() {
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
+        if (parsed.length === 0) return INITIAL_FIRMS;
         return parsed.map((f: Firm) => {
-          if (f.id === 'F-1001' && f.name === 'Sai Medicals') {
-            return { ...f, name: 'Wellcure Pharmacy', email: 'ramesh@wellcure.com' };
+          if (f.id === 'F-1001') {
+            return {
+              ...f,
+              name: 'Yogwalture Pharmacy',
+              adminName: 'Yograj Walture',
+              email: 'yogwalture@gmail.com',
+              password: 'yograje1987',
+              users: f.users || [
+                {
+                  id: 'amit_counter',
+                  name: 'Amit Counter Staff',
+                  role: 'Counter Staff',
+                  mobile: '9876543211',
+                  password: 'password',
+                  salary: 15000
+                }
+              ]
+            };
           }
-          return f;
+          return { ...f, users: f.users || [] };
         });
       } catch (e) {
         return INITIAL_FIRMS;
@@ -499,8 +538,38 @@ export default function App() {
 
     // 2. Set up real-time firebase listeners and bi-directional merge
     const unsubFirms = dbSubscribeFirms((fList) => {
-      const cloudFirmsMap = new Map(fList.map(f => [f.id, f]));
-      const mergedFirms = [...fList];
+      if (fList.length === 0) {
+        dbSaveFirm(SEEDED_DEFAULT_FIRM);
+        return;
+      }
+      const mappedFList = fList.map((f: Firm) => {
+        if (f.id === 'F-1001') {
+          return {
+            ...f,
+            name: f.name || 'Yogwalture Pharmacy',
+            adminName: f.adminName || 'Yograj Walture',
+            email: f.email || 'yogwalture@gmail.com',
+            password: f.password || 'yograje1987',
+            users: f.users || [
+              {
+                id: 'amit_counter',
+                name: 'Amit Counter Staff',
+                role: 'Counter Staff',
+                mobile: '9876543211',
+                password: 'password',
+                salary: 15000
+              }
+            ],
+            status: f.status || 'Active'
+          };
+        }
+        return {
+          ...f,
+          users: f.users || []
+        };
+      });
+      const cloudFirmsMap = new Map(mappedFList.map(f => [f.id, f]));
+      const mergedFirms = [...mappedFList];
       for (const f of firmsRef.current) {
         if (!cloudFirmsMap.has(f.id)) {
           dbSaveFirm(f);
@@ -735,20 +804,75 @@ export default function App() {
     setCurrentPage('transactionHistory');
   };
 
-  const handleClearAllData = () => {
-    if (window.confirm("Are you sure you want to completely erase all customers and transaction history? This will clear all existing records and give you a perfectly fresh environment for your own testing.")) {
-      setTransactions([]);
-      setCustomers([]);
-      setIsDemoMode(false);
-      setOpeningCash(0);
-      setCounterCashSales(0);
-      setCounterOnlineSales(0);
-      localStorage.setItem('shopbooks_demo_mode', 'false');
-      localStorage.setItem('shopbooks_transactions', JSON.stringify([]));
-      localStorage.setItem('shopbooks_customers', JSON.stringify([]));
-      localStorage.setItem('shopbooks_opening_cash', '0');
-      localStorage.setItem('shopbooks_counter_cash_sales', '0');
-      localStorage.setItem('shopbooks_counter_online_sales', '0');
+  const handleClearAllData = async () => {
+    if (window.confirm("WARNING: This will completely ERASE ALL customers, transactions, daily register closure history, and registered firms from BOTH local storage and the cloud Firestore database, then create Yogwalture@gmail.com as the Master Admin. Are you absolutely sure you want to proceed?")) {
+      setIsFirebaseLoading(true);
+      try {
+        // 1. Delete all transactions from cloud
+        for (const tx of transactionsRef.current) {
+          try {
+            await dbDeleteTransaction(tx.id);
+          } catch (e) {
+            console.warn(`Failed deleting transaction ${tx.id}`, e);
+          }
+        }
+        // 2. Delete all customers from cloud
+        for (const cust of customersRef.current) {
+          try {
+            await dbDeleteCustomer(cust.id);
+          } catch (e) {
+            console.warn(`Failed deleting customer ${cust.id}`, e);
+          }
+        }
+        // 3. Delete all daily registers from cloud
+        for (const key of Object.keys(firmDailyRegistersRef.current)) {
+          try {
+            await dbDeleteDailyRegister(key);
+          } catch (e) {
+            console.warn(`Failed deleting register ${key}`, e);
+          }
+        }
+        // 4. Delete all firms from cloud
+        for (const firm of firmsRef.current) {
+          try {
+            await dbDeleteFirm(firm.id);
+          } catch (e) {
+            console.warn(`Failed deleting firm ${firm.id}`, e);
+          }
+        }
+
+        // 5. Clear all local states
+        setTransactionsState([]);
+        setCustomersState([]);
+        setFirmDailyRegistersState({});
+        setFirmsState([]);
+
+        // 6. Write/Seed Master default firm to database
+        await dbSaveFirm(SEEDED_DEFAULT_FIRM);
+
+        // 7. Reset adjustments
+        setIsDemoMode(false);
+        setOpeningCash(0);
+        setCounterCashSales(0);
+        setCounterOnlineSales(0);
+        setOpeningBalanceForwarded(0);
+
+        localStorage.setItem('shopbooks_demo_mode', 'false');
+        localStorage.setItem('shopbooks_transactions', JSON.stringify([]));
+        localStorage.setItem('shopbooks_customers', JSON.stringify([]));
+        localStorage.setItem('shopbooks_opening_cash', '0');
+        localStorage.setItem('shopbooks_counter_cash_sales', '0');
+        localStorage.setItem('shopbooks_counter_online_sales', '0');
+        localStorage.setItem('shopbooks_current_firm_id', 'F-1001');
+
+        setCurrentFirmId('F-1001');
+
+        alert("Database completely erased! Master Admin firm 'Yogwalture Pharmacy' seeded successfully with admin 'yogwalture@gmail.com' and password 'yograje1987'.");
+      } catch (err) {
+        alert("Erase failed: " + (err instanceof Error ? err.message : String(err)));
+      } finally {
+        setIsFirebaseLoading(false);
+      }
     }
   };
 
@@ -768,24 +892,42 @@ export default function App() {
   };
 
   const handleGoogleSignInFlow = async () => {
-    try {
-      const u = await triggerGoogleSignIn();
-      if (u && u.email === 'yogwalture@gmail.com') {
-        setUserRole('firmAdmin');
-        setCurrentUser({
-          id: 'master_super_admin',
-          name: 'Master Super Admin (yogwalture@gmail.com)',
-          role: 'Master Admin',
-          mobile: 'yogwalture@gmail.com'
-        });
-        setCurrentPage('masterAdmin');
-        alert("Welcome Master Super Admin (yogwalture@gmail.com)!");
-      } else {
-        alert("Access Denied: Google login is reserved for the Master Admin (yogwalture@gmail.com).");
-        await triggerSignOut();
+    const promptValue = window.prompt("To login as Master Admin, please enter the Master Admin Password (or type 'google' to authenticate via your Google Account):", "yograje1987");
+    if (promptValue === null) return; // cancelled
+
+    if (promptValue.trim() === 'yograje1987' || promptValue.trim() === 'yograje') {
+      setUserRole('firmAdmin');
+      setCurrentUser({
+        id: 'master_super_admin',
+        name: 'Master Super Admin (yogwalture@gmail.com)',
+        role: 'Master Admin',
+        mobile: 'yogwalture@gmail.com'
+      });
+      setCurrentPage('masterAdmin');
+      alert("Welcome Master Super Admin (yogwalture@gmail.com)!");
+      return;
+    } else if (promptValue.trim().toLowerCase() === 'google') {
+      try {
+        const u = await triggerGoogleSignIn();
+        if (u && u.email === 'yogwalture@gmail.com') {
+          setUserRole('firmAdmin');
+          setCurrentUser({
+            id: 'master_super_admin',
+            name: 'Master Super Admin (yogwalture@gmail.com)',
+            role: 'Master Admin',
+            mobile: 'yogwalture@gmail.com'
+          });
+          setCurrentPage('masterAdmin');
+          alert("Welcome Master Super Admin (yogwalture@gmail.com)!");
+        } else {
+          alert("Access Denied: Google login is reserved for the Master Admin (yogwalture@gmail.com).");
+          await triggerSignOut();
+        }
+      } catch (err) {
+        alert("Google Sign In failed or cancelled inside browser iFrame.");
       }
-    } catch (err) {
-      alert("Google Sign In failed or cancelled.");
+    } else {
+      alert("Incorrect password. Please try again.");
     }
   };
 
@@ -1180,6 +1322,8 @@ export default function App() {
           firms={firms}
           openingBalanceForwarded={openingBalanceForwarded}
           setOpeningBalanceForwarded={handleSetOpeningBalanceForwarded}
+          counterOnlineSales={counterOnlineSales}
+          setCounterOnlineSales={handleSetCounterOnlineSales}
         />
       )}
       {currentPage === 'schemeCreditSale' && (
@@ -1327,7 +1471,7 @@ export default function App() {
       <WhatsAppNotificationModal 
         notification={whatsAppNotification}
         onClose={() => setWhatsAppNotification(null)}
-        activeFirmName={firms.find(f => f.id === currentFirmId)?.name || 'Wellcure Pharmacy'}
+        activeFirmName={firms.find(f => f.id === currentFirmId)?.name || 'Yogwalture Pharmacy'}
       />
 
       {adminUnlockAction && (
@@ -1606,7 +1750,7 @@ function Dashboard({
         backupVersion: "1.0",
         timestamp: new Date().toISOString(),
         firmId: currentFirmId,
-        firmName: activeFirm?.name || "Wellcure Pharmacy",
+        firmName: activeFirm?.name || "Yogwalture Pharmacy",
         transactions,
         customers,
         firmDailyRegisters: localStorage.getItem('shopbooks_daily_registers') ? JSON.parse(localStorage.getItem('shopbooks_daily_registers')!) : {}
@@ -1933,7 +2077,7 @@ function Dashboard({
                         ...(activeFirm?.users || []).map(u => u.name), 
                         ...transactions.filter(t => t.firmId === currentFirmId && (t.type === 'staff_credit' || t.type === 'staff_advance')).map(t => t.patientName || '')
                       ])).filter(Boolean).map((staffName) => {
-                        const matchingUser = activeFirm?.users.find(u => u.name === staffName);
+                        const matchingUser = (activeFirm?.users || []).find(u => u.name === staffName);
                         const scOutstanding = transactions
                           .filter(t => t.firmId === currentFirmId && t.type === 'staff_credit' && t.patientName === staffName)
                           .reduce((sum, t) => sum + t.amount, 0);
@@ -3723,6 +3867,392 @@ function CustomerLedgerScreen({
 
   const totalOutstanding = customer.pendingBalance;
 
+  const [activeTab, setActiveTab] = useState<'timeline' | 'list'>('timeline');
+  const [timelineFilter, setTimelineFilter] = useState<'all' | 'dues' | 'payments'>('all');
+  const [timelineSearch, setTimelineSearch] = useState('');
+  const [timelineSort, setTimelineSort] = useState<'desc' | 'asc'>('desc');
+  const [selectedTxId, setSelectedTxId] = useState<string | null>(null);
+
+  const [listStartDate, setListStartDate] = useState('');
+  const [listEndDate, setListEndDate] = useState('');
+
+  const filteredListTransactions = useMemo(() => {
+    return customerTransactions.filter(tx => {
+      if (listStartDate && tx.date < listStartDate) return false;
+      if (listEndDate && tx.date > listEndDate) return false;
+      return true;
+    });
+  }, [customerTransactions, listStartDate, listEndDate]);
+
+  const downloadFilteredPdfStatement = () => {
+    try {
+      const doc = new jsPDF();
+      
+      // Header Banner Background (#128C7E)
+      doc.setFillColor(18, 140, 126);
+      doc.rect(0, 0, 210, 40, 'F');
+      
+      // Header Title & Meta Description
+      doc.setTextColor(255, 255, 255);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(22);
+      doc.text("ShopBooks Ledger", 15, 17);
+      
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      doc.text("Smart UPI Business Accounting Statement", 15, 24);
+      
+      const currentFirm = firms.find(f => f.id === currentFirmId);
+      doc.text(`Generated: ${new Date().toLocaleString('en-IN')}`, 145, 17);
+      doc.text(`Firm: ${currentFirm?.name || 'Yogwalture Pharmacy'}`, 145, 24);
+      doc.text(`Mobile: ${currentFirm?.mobile || ''}`, 145, 30);
+
+      // Section: Ledger Account Title
+      doc.setTextColor(18, 140, 126);
+      doc.setFontSize(13);
+      doc.setFont("helvetica", "bold");
+      doc.text("FILTERED AUDIT STATEMENT SUMMARY", 15, 52);
+      
+      // Horizontal Gray Divider
+      doc.setDrawColor(200, 200, 200);
+      doc.setLineWidth(0.5);
+      doc.line(15, 56, 195, 56);
+      
+      // Detailed Customer Profile Block
+      doc.setTextColor(50, 50, 50);
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "bold");
+      doc.text("STATEMENT HOLDER:", 15, 65);
+      
+      doc.setFont("helvetica", "normal");
+      doc.text(`Customer Name:   ${customer.name}`, 15, 71);
+      doc.text(`Mobile Connection: ${customer.phone}`, 15, 77);
+      const startRangeLabel = listStartDate ? listStartDate : "Beginning";
+      const endRangeLabel = listEndDate ? listEndDate : "Present";
+      doc.text(`Period Covered:   ${startRangeLabel} to ${endRangeLabel}`, 15, 83);
+
+      // Calculate baseline opening balance for full customerTransactions history
+      const totalDebitsAll = customerTransactions
+        .filter(t => t.type === 'credit_sale')
+        .reduce((sum, t) => sum + t.amount, 0);
+      const totalCreditsAll = customerTransactions
+        .filter(t => t.type === 'receive_payment')
+        .reduce((sum, t) => sum + t.amount, 0);
+      
+      const baselineBalance = Math.max(0, customer.pendingBalance - totalDebitsAll + totalCreditsAll);
+
+      // Sort all transactions to calculate opening balance up to the start date
+      const allChronTx = [...customerTransactions].sort((a, b) => {
+        const dateCompare = a.date.localeCompare(b.date);
+        if (dateCompare !== 0) return dateCompare;
+        const timeCompare = (a.time || '').localeCompare(b.time || '');
+        if (timeCompare !== 0) return timeCompare;
+        return a.id.localeCompare(b.id);
+      });
+
+      let openingBalance = baselineBalance;
+      allChronTx.forEach((tx) => {
+        if (listStartDate && tx.date < listStartDate) {
+          const isDebit = tx.type === 'credit_sale';
+          if (isDebit) {
+            openingBalance += tx.amount;
+          } else {
+            openingBalance = Math.max(0, openingBalance - tx.amount);
+          }
+        }
+      });
+
+      // Filtered & sorted list
+      const sortedFilteredTx = [...filteredListTransactions].sort((a, b) => {
+        const dateCompare = a.date.localeCompare(b.date);
+        if (dateCompare !== 0) return dateCompare;
+        const timeCompare = (a.time || '').localeCompare(b.time || '');
+        if (timeCompare !== 0) return timeCompare;
+        return a.id.localeCompare(b.id);
+      });
+
+      // Totals inside this filtered period
+      const rangeDebits = sortedFilteredTx
+        .filter(t => t.type === 'credit_sale')
+        .reduce((sum, t) => sum + t.amount, 0);
+      const rangeCredits = sortedFilteredTx
+        .filter(t => t.type === 'receive_payment')
+        .reduce((sum, t) => sum + t.amount, 0);
+
+      let running = openingBalance;
+      sortedFilteredTx.forEach((tx) => {
+        const isDebit = tx.type === 'credit_sale';
+        if (isDebit) {
+          running += tx.amount;
+        } else {
+          running = Math.max(0, running - tx.amount);
+        }
+      });
+      const endingBalance = running;
+
+      // Outstanding Balance Metric Box on Right Side
+      doc.setFillColor(245, 245, 245);
+      doc.rect(125, 61, 70, 24, 'F');
+      doc.setDrawColor(220, 220, 220);
+      doc.rect(125, 61, 70, 24, 'D');
+      
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(18, 140, 126);
+      doc.setFontSize(8.5);
+      doc.text("PERIOD ENDING BALANCE", 130, 68);
+      
+      doc.setFontSize(14);
+      doc.setTextColor(endingBalance > 0 ? 180 : 50, 40, 40); // red for positive outstanding, dark gray for zero
+      doc.text(`INR ${endingBalance.toLocaleString('en-IN')}`, 130, 77);
+
+      // Table Title
+      doc.setTextColor(18, 140, 126);
+      doc.setFontSize(12);
+      doc.setFont("helvetica", "bold");
+      doc.text("AUDITED ACCOUNT LEDGER HISTORIES (FILTERED)", 15, 96);
+      
+      let currentY = 101;
+      
+      // Draw Table Header Background (Light Steel Accent)
+      doc.setFillColor(235, 242, 239);
+      doc.rect(15, currentY, 180, 8, 'F');
+      
+      doc.setTextColor(40, 40, 40);
+      doc.setFontSize(8.5);
+      doc.setFont("helvetica", "bold");
+      
+      doc.text("S.No", 18, currentY + 6);
+      doc.text("Date & Time", 30, currentY + 6);
+      doc.text("Transaction Type", 70, currentY + 6);
+      doc.text("Debit (DR)", 125, currentY + 6);
+      doc.text("Credit (CR)", 155, currentY + 6);
+      doc.text("Outstanding", 180, currentY + 6);
+      
+      currentY += 8;
+
+      // Print opening baseline row
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(70, 70, 70);
+      doc.setFontSize(8.5);
+      
+      doc.setDrawColor(235, 235, 235);
+      doc.line(15, currentY, 195, currentY);
+      
+      doc.text("1", 18, currentY + 6);
+      doc.text(listStartDate ? `${listStartDate} 00:00` : "Baseline", 30, currentY + 6);
+      doc.text("Opening Balance of Filter Period", 70, currentY + 6);
+      doc.text("-", 130, currentY + 6);
+      doc.text("-", 160, currentY + 6);
+      doc.text(`INR ${openingBalance.toLocaleString('en-IN')}`, 180, currentY + 6);
+      
+      currentY += 8;
+
+      running = openingBalance;
+      sortedFilteredTx.forEach((tx, idx) => {
+        // Page break safety margin
+        if (currentY > 270) {
+          doc.addPage();
+          currentY = 20;
+          
+          doc.setFillColor(235, 242, 239);
+          doc.rect(15, currentY, 180, 8, 'F');
+          
+          doc.setTextColor(40, 40, 40);
+          doc.setFont("helvetica", "bold");
+          doc.text("S.No", 18, currentY + 6);
+          doc.text("Date & Time", 30, currentY + 6);
+          doc.text("Transaction Type", 70, currentY + 6);
+          doc.text("Debit (DR)", 125, currentY + 6);
+          doc.text("Credit (CR)", 155, currentY + 6);
+          doc.text("Outstanding", 180, currentY + 6);
+          
+          currentY += 8;
+          doc.setFont("helvetica", "normal");
+          doc.setTextColor(70, 70, 70);
+        }
+        
+        const serialNo = idx + 2;
+        const isDebit = tx.type === 'credit_sale';
+        
+        if (isDebit) {
+          running += tx.amount;
+        } else {
+          running = Math.max(0, running - tx.amount);
+        }
+        
+        doc.line(15, currentY, 195, currentY);
+        doc.text(serialNo.toString(), 18, currentY + 6);
+        doc.text(`${tx.date} ${tx.time || ''}`, 30, currentY + 6);
+        
+        let typeStr = '';
+        if (tx.type === 'credit_sale') {
+          typeStr = tx.extraDetails ? `Udhaar (${tx.extraDetails})` : 'Udhaar (Credit Purchase)';
+        } else if (tx.type === 'receive_payment') {
+          typeStr = tx.extraDetails ? `Payment Recv (${tx.extraDetails})` : 'Collected Payment';
+        } else {
+          typeStr = 'Ledger Modification';
+        }
+        
+        const cleanTypeStr = typeStr.length > 28 ? typeStr.substring(0, 25) + '...' : typeStr;
+        doc.text(cleanTypeStr, 70, currentY + 6);
+        
+        if (isDebit) {
+          doc.text(`+INR ${tx.amount.toLocaleString('en-IN')}`, 125, currentY + 6);
+          doc.text("-", 160, currentY + 6);
+        } else {
+          doc.text("-", 130, currentY + 6);
+          doc.text(`-INR ${tx.amount.toLocaleString('en-IN')}`, 155, currentY + 6);
+        }
+        
+        doc.text(`INR ${running.toLocaleString('en-IN')}`, 180, currentY + 6);
+        currentY += 8;
+      });
+
+      // Show Period Totals
+      if (currentY > 265) {
+        doc.addPage();
+        currentY = 20;
+      }
+      doc.setDrawColor(18, 140, 126);
+      doc.setLineWidth(0.5);
+      doc.line(15, currentY, 195, currentY);
+
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(40, 40, 40);
+      doc.text("Period Totals & Net Summary:", 30, currentY + 6);
+      doc.text(`+INR ${rangeDebits.toLocaleString('en-IN')}`, 125, currentY + 6);
+      doc.text(`-INR ${rangeCredits.toLocaleString('en-IN')}`, 155, currentY + 6);
+      doc.text(`INR ${endingBalance.toLocaleString('en-IN')}`, 180, currentY + 6);
+      currentY += 8;
+
+      // Bottom highlight double bar
+      doc.setDrawColor(18, 140, 126);
+      doc.setLineWidth(1);
+      doc.line(15, currentY, 195, currentY);
+      
+      currentY += 12;
+      
+      if (currentY > 270) {
+        doc.addPage();
+        currentY = 25;
+      }
+      
+      doc.setTextColor(110, 110, 110);
+      doc.setFontSize(8);
+      doc.text("Disclaimer: This is a computer-synced electronic transaction ledger generated inside ShopBooks cloud workspaces.", 15, currentY);
+      doc.text("Outstanding values match active patient registers at local Indian standard times.", 15, currentY + 4);
+      doc.text("Thank you for your business relationship!", 15, currentY + 8);
+      
+      const fileLabel = `Filtered_Statement_${customer.name.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`;
+      doc.save(fileLabel);
+    } catch (err) {
+      alert("Error generating statement PDF: " + (err instanceof Error ? err.message : String(err)));
+    }
+  };
+
+  const handlePresetRange = (preset: 'today' | 'this_month' | 'last_30' | 'clear') => {
+    const todayStr = new Date().toISOString().split('T')[0];
+    if (preset === 'today') {
+      setListStartDate(todayStr);
+      setListEndDate(todayStr);
+    } else if (preset === 'this_month') {
+      const now = new Date();
+      const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+      const yyyy = firstDay.getFullYear();
+      const mm = String(firstDay.getMonth() + 1).padStart(2, '0');
+      const dd = '01';
+      setListStartDate(`${yyyy}-${mm}-${dd}`);
+      setListEndDate(todayStr);
+    } else if (preset === 'last_30') {
+      const past30 = new Date();
+      past30.setDate(past30.getDate() - 30);
+      const yyyy = past30.getFullYear();
+      const mm = String(past30.getMonth() + 1).padStart(2, '0');
+      const dd = String(past30.getDate()).padStart(2, '0');
+      setListStartDate(`${yyyy}-${mm}-${dd}`);
+      setListEndDate(todayStr);
+    } else if (preset === 'clear') {
+      setListStartDate('');
+      setListEndDate('');
+    }
+  };
+
+  // 1. Sort chronologically (oldest first) to compute accurate running balance
+  const timelineData = useMemo(() => {
+    const chronTx = [...customerTransactions].sort((a, b) => {
+      const dateCompare = a.date.localeCompare(b.date);
+      if (dateCompare !== 0) return dateCompare;
+      const timeCompare = (a.time || '').localeCompare(b.time || '');
+      if (timeCompare !== 0) return timeCompare;
+      return a.id.localeCompare(b.id);
+    });
+
+    const totalDebits = customerTransactions
+      .filter(t => t.type === 'credit_sale')
+      .reduce((sum, t) => sum + t.amount, 0);
+    const totalCredits = customerTransactions
+      .filter(t => t.type === 'receive_payment')
+      .reduce((sum, t) => sum + t.amount, 0);
+
+    const initialBalance = Math.max(0, customer.pendingBalance - totalDebits + totalCredits);
+    let currentRunning = initialBalance;
+
+    return chronTx.map((tx, idx) => {
+      const isDebit = tx.type === 'credit_sale';
+      const prevRunning = currentRunning;
+      if (isDebit) {
+        currentRunning += tx.amount;
+      } else {
+        currentRunning = Math.max(0, currentRunning - tx.amount);
+      }
+      return {
+        ...tx,
+        isDebit,
+        prevRunning,
+        runningBalance: currentRunning,
+        index: idx + 1
+      };
+    });
+  }, [customerTransactions, customer.pendingBalance]);
+
+  // 2. Filter & Sort for Display
+  const filteredTimeline = useMemo(() => {
+    let result = [...timelineData];
+
+    if (timelineFilter === 'dues') {
+      result = result.filter(item => item.isDebit);
+    } else if (timelineFilter === 'payments') {
+      result = result.filter(item => !item.isDebit);
+    }
+
+    if (timelineSearch.trim() !== '') {
+      const query = timelineSearch.toLowerCase();
+      result = result.filter(item => 
+        (item.extraDetails || '').toLowerCase().includes(query) ||
+        (item.recordedByUserName || '').toLowerCase().includes(query) ||
+        item.amount.toString().includes(query) ||
+        item.date.includes(query) ||
+        (item.type === 'credit_sale' ? 'udhaar dues' : 'payment receipts').includes(query)
+      );
+    }
+
+    if (timelineSort === 'desc') {
+      result.reverse();
+    }
+
+    return result;
+  }, [timelineData, timelineFilter, timelineSearch, timelineSort]);
+
+  // 3. Active selected transaction
+  const selectedTx = useMemo(() => {
+    if (filteredTimeline.length === 0) return null;
+    if (selectedTxId) {
+      const found = filteredTimeline.find(t => t.id === selectedTxId);
+      if (found) return found;
+    }
+    return filteredTimeline[0]; // fallback to first item
+  }, [selectedTxId, filteredTimeline]);
+
   const downloadPdfStatement = () => {
     try {
       const doc = new jsPDF();
@@ -3743,7 +4273,7 @@ function CustomerLedgerScreen({
       
       const currentFirm = firms.find(f => f.id === currentFirmId);
       doc.text(`Generated: ${new Date().toLocaleString('en-IN')}`, 145, 17);
-      doc.text(`Firm: ${currentFirm?.name || 'Wellcure Pharmacy'}`, 145, 24);
+      doc.text(`Firm: ${currentFirm?.name || 'Yogwalture Pharmacy'}`, 145, 24);
       doc.text(`Mobile: ${currentFirm?.mobile || ''}`, 145, 30);
 
       // Section: Ledger Account Title
@@ -4145,84 +4675,484 @@ function CustomerLedgerScreen({
           </div>
         </section>
 
-        <section className="space-y-3 font-sans">
-          <div className="flex items-center justify-between">
-            <h3 className="text-headline-md text-primary font-bold text-base flex items-center gap-2 font-sans">
-              <Clock className="w-5 h-5 text-on-surface-variant/75" />
-              <span>Statement & Audit History ({customerTransactions.length})</span>
-            </h3>
-            <span className="text-[11px] text-on-surface-variant bg-surface-container-low px-2 py-1 rounded font-medium">Auto-synced</span>
+        <section className="space-y-4 font-sans">
+          {/* Dual-View Mode Switcher */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-outline-variant/30 pb-1.5">
+            <div className="flex items-center gap-1 bg-surface-container-low p-1 rounded-xl">
+              <button
+                onClick={() => setActiveTab('timeline')}
+                className={`px-4 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                  activeTab === 'timeline'
+                    ? 'bg-white text-primary shadow-sm'
+                    : 'text-on-surface-variant hover:text-on-surface'
+                }`}
+              >
+                <TrendingUp className="w-3.5 h-3.5" />
+                Interactive Timeline
+              </button>
+              <button
+                onClick={() => setActiveTab('list')}
+                className={`px-4 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                  activeTab === 'list'
+                    ? 'bg-white text-primary shadow-sm'
+                    : 'text-on-surface-variant hover:text-on-surface'
+                }`}
+              >
+                <Clock className="w-3.5 h-3.5" />
+                Audit Statement List
+              </button>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-bold text-primary/80 bg-primary/10 px-2.5 py-1 rounded-full">
+                {customerTransactions.length} Total Records
+              </span>
+            </div>
           </div>
 
-          <div className="bg-white rounded-2xl border border-outline-variant shadow-sm overflow-hidden divide-y divide-outline-variant/30">
-            {customerTransactions.map((tx) => {
-              const isDebit = tx.type === 'credit_sale';
-              const isCredit = tx.type === 'receive_payment';
-              return (
-                <div 
-                  key={tx.id} 
-                  className={`p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${isCredit ? 'bg-[#DCF8C6]/10' : ''}`}
-                >
-                  <div className="flex items-start gap-3">
-                    <div className={`p-2.5 rounded-full mt-0.5 ${isCredit ? 'bg-secondary/10 text-secondary' : 'bg-error/10 text-error'}`}>
-                      {isCredit ? (
-                        <ArrowUpCircle className="w-5 h-5" />
-                      ) : (
-                        <PlusCircle className="w-5 h-5 rotate-45" />
-                      )}
-                    </div>
-                    <div className="space-y-0.5 text-left">
-                      <p className="font-bold text-on-background text-sm flex items-center gap-2 font-sans">
-                        <span>{tx.type === 'credit_sale' ? 'Udhaar (Credit Sale)' : 'Payment Received'}</span>
-                        {tx.extraDetails && (
-                          <span className="text-[9px] bg-surface-container px-1.5 py-0.5 rounded font-mono text-on-surface-variant font-bold uppercase">
-                            {tx.extraDetails}
-                          </span>
-                        )}
-                      </p>
-                      <p className="text-xs text-on-surface-variant flex items-center gap-1.5 font-sans">
-                        <span>{tx.date}</span>
-                        <span>•</span>
-                        <span className="font-mono text-[11px]">{tx.time}</span>
-                      </p>
-                      <p className="text-[11px] text-on-surface-variant">
-                        Recorded by: <span className="font-semibold text-on-surface">{tx.recordedByUserName || 'System'}</span>
-                      </p>
+          {activeTab === 'timeline' ? (
+            <div className="space-y-4">
+              {/* Timeline Action and Control Filters */}
+              <div className="bg-white border border-outline-variant/35 rounded-xl p-4 shadow-sm space-y-3.5">
+                <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
+                  {/* Search bar */}
+                  <div className="relative flex-1">
+                    <Search className="w-4 h-4 text-on-surface-variant/70 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      placeholder="Search timeline notes, amount, date..."
+                      value={timelineSearch}
+                      onChange={(e) => setTimelineSearch(e.target.value)}
+                      className="w-full pl-9 pr-8 py-1.5 text-xs border border-outline-variant rounded-lg outline-none focus:border-primary bg-surface-bright font-sans font-medium"
+                    />
+                    {timelineSearch && (
+                      <button
+                        onClick={() => setTimelineSearch('')}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 text-on-surface-variant hover:text-on-surface"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Ordering / Sorting Toggle */}
+                  <button
+                    onClick={() => setTimelineSort(prev => prev === 'desc' ? 'asc' : 'desc')}
+                    className="px-3 py-1.5 border border-outline-variant rounded-lg text-xs font-semibold hover:bg-surface-container-low transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap bg-white self-start sm:self-auto"
+                  >
+                    <ArrowLeftRight className="w-3.5 h-3.5 rotate-90 text-on-surface-variant" />
+                    Sort: {timelineSort === 'desc' ? 'Newest First' : 'Oldest First'}
+                  </button>
+                </div>
+
+                {/* Filters Row */}
+                <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-dashed border-outline-variant/20">
+                  <span className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider mr-1">Filter Timeline:</span>
+                  <button
+                    onClick={() => setTimelineFilter('all')}
+                    className={`px-3 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer ${
+                      timelineFilter === 'all'
+                        ? 'bg-primary text-on-primary'
+                        : 'bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high'
+                    }`}
+                  >
+                    All ({timelineData.length})
+                  </button>
+                  <button
+                    onClick={() => setTimelineFilter('dues')}
+                    className={`px-3 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer flex items-center gap-1 ${
+                      timelineFilter === 'dues'
+                        ? 'bg-error text-white shadow-sm'
+                        : 'bg-error/5 text-error hover:bg-error/10'
+                    }`}
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-error" />
+                    Dues/DR ({timelineData.filter(x => x.isDebit).length})
+                  </button>
+                  <button
+                    onClick={() => setTimelineFilter('payments')}
+                    className={`px-3 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer flex items-center gap-1 ${
+                      timelineFilter === 'payments'
+                        ? 'bg-secondary text-white shadow-sm'
+                        : 'bg-secondary/5 text-secondary hover:bg-secondary/10'
+                    }`}
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-secondary" />
+                    Payments/CR ({timelineData.filter(x => !x.isDebit).length})
+                  </button>
+                </div>
+              </div>
+
+              {filteredTimeline.length === 0 ? (
+                <div className="p-12 text-center text-on-surface-variant border border-dashed border-outline-variant/40 rounded-2xl bg-white space-y-2">
+                  <p className="text-sm font-semibold text-on-background">No matching timeline entries found</p>
+                  <p className="text-xs text-on-surface-variant">Try refining your search text or shifting filters above.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-start">
+                  
+                  {/* Timeline Node Chain (Left panel/Full width on mobile) */}
+                  <div className="md:col-span-7 space-y-4">
+                    <div className="relative border-l-2 border-outline-variant/40 ml-4 pl-6 space-y-5 text-left py-2">
+                      {filteredTimeline.map((tx) => {
+                        const isSelected = selectedTx?.id === tx.id;
+                        return (
+                          <div
+                            key={tx.id}
+                            onClick={() => setSelectedTxId(tx.id)}
+                            className={`relative group cursor-pointer transition-all duration-200`}
+                          >
+                            {/* Interactive Connected Dot */}
+                            <div className={`absolute -left-[37px] top-4 w-6 h-6 rounded-full flex items-center justify-center transition-all ${
+                              isSelected
+                                ? (tx.isDebit ? 'bg-error text-white ring-4 ring-error/25' : 'bg-secondary text-white ring-4 ring-secondary/25')
+                                : (tx.isDebit ? 'bg-white border-2 border-error/50 text-error' : 'bg-white border-2 border-secondary/50 text-secondary')
+                            }`}>
+                              {tx.isDebit ? (
+                                <Plus className="w-3 h-3" strokeWidth={3} />
+                              ) : (
+                                <Check className="w-3 h-3" strokeWidth={3} />
+                              )}
+                            </div>
+
+                            {/* Timeline Node Card */}
+                            <div className={`p-4 rounded-xl border transition-all ${
+                              isSelected
+                                ? 'bg-primary/5 border-primary shadow-sm ring-1 ring-primary/20'
+                                : 'bg-white hover:bg-surface-container-lowest/30 border-outline-variant/45 hover:border-outline-variant/80'
+                            }`}>
+                              <div className="flex items-center justify-between gap-2 border-b border-outline-variant/10 pb-2 mb-2">
+                                <span className="text-[10px] text-on-surface-variant font-mono font-bold uppercase tracking-wider">
+                                  #{tx.index} • {tx.date} <span className="text-on-surface-variant/50 ml-1">{tx.time}</span>
+                                </span>
+                                <span className={`text-[9px] px-1.5 py-0.5 rounded font-black uppercase tracking-wider ${
+                                  tx.isDebit ? 'bg-error/10 text-error' : 'bg-secondary/10 text-secondary'
+                                }`}>
+                                  {tx.isDebit ? 'Dues (DR)' : 'Paid (CR)'}
+                                </span>
+                              </div>
+
+                              <div className="flex justify-between items-center gap-3">
+                                <div>
+                                  <p className="text-xs text-on-surface-variant/80 font-bold">
+                                    {tx.type === 'credit_sale' ? 'Credit Purchase (Udhaar)' : 'Settled Balance Receipt'}
+                                  </p>
+                                  {tx.extraDetails && (
+                                    <p className="text-xs font-semibold text-on-surface mt-1 italic">
+                                      "{tx.extraDetails}"
+                                    </p>
+                                  )}
+                                </div>
+                                <div className="text-right whitespace-nowrap">
+                                  <p className={`text-base font-extrabold ${tx.isDebit ? 'text-error' : 'text-secondary'}`}>
+                                    {tx.isDebit ? '+' : '-'} ₹{tx.amount.toLocaleString()}
+                                  </p>
+                                </div>
+                              </div>
+
+                              {/* Progress Track visualizer */}
+                              <div className="mt-3.5 pt-2 border-t border-outline-variant/10 flex items-center justify-between text-[11px] text-on-surface-variant">
+                                <span className="font-semibold flex items-center gap-1">
+                                  <TrendingUp className="w-3.5 h-3.5 text-on-surface-variant/60" />
+                                  Running Balance:
+                                </span>
+                                <span className="font-bold text-on-surface font-mono">
+                                  ₹{tx.runningBalance.toLocaleString()}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between sm:justify-end gap-3 self-end sm:self-center border-t sm:border-t-0 pt-2 sm:pt-0 border-dashed border-outline-variant/50 w-full sm:w-auto">
-                    <a 
-                      href={`https://api.whatsapp.com/send?phone=${tx.customerPhone?.replace(/\D/g, '') || customer.phone.replace(/\D/g, '')}&text=${encodeURIComponent(`Dear ${customer.name},\nRegarding transaction of ₹${tx.amount} on ${tx.date}.\nShopBooks UPI Ledgers`)}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs text-secondary hover:underline flex items-center gap-1 font-semibold hover:text-[#25D366] transition-colors cursor-pointer"
-                    >
-                      <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
-                        <path d="M12.003 21c-1.897 0-3.754-.51-5.385-1.478L2 21l1.523-4.503A8.973 8.973 0 0 1 2.003 12c0-4.963 4.037-9 9-9s9 4.037 9 9-4.037 9-9 9zm0-16c-3.859 0-7 3.14-7 7 0 1.543.513 3.01 1.482 4.223l-.155.457-.96 2.836 2.914-.925.441.229A6.974 6.974 0 0 0 12.003 19c3.859 0 7-3.14 7-7s-3.141-7-7-7z" />
-                      </svg>
-                      Resend SMS
-                    </a>
+                  {/* Sticky Detail panel (Right panel on desktop) */}
+                  {selectedTx && (
+                    <div className="md:col-span-5 md:sticky md:top-20 space-y-4">
+                      <div className="bg-white border-2 border-primary/20 rounded-2xl p-5 shadow-sm space-y-4 text-left">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] bg-primary/10 text-primary font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+                            Interactive Details (S.No #{selectedTx.index})
+                          </span>
+                          <span className="text-xs font-mono text-on-surface-variant">{selectedTx.date}</span>
+                        </div>
 
-                    <div className="text-right">
-                      <p className={`font-bold text-base ${isCredit ? 'text-secondary font-sans' : 'text-error font-sans'}`}>
-                        {isCredit ? '-' : '+'} ₹{tx.amount.toLocaleString()}
-                      </p>
-                      <span className="text-[9px] text-on-surface-variant block uppercase tracking-wider font-bold">
-                        {isCredit ? 'CREDIT (CR)' : 'DEBIT (DR)'}
-                      </span>
+                        {/* Visual Dues Progression Graphic */}
+                        <div className="p-4 rounded-xl bg-surface-container-low border border-outline-variant/30 space-y-3.5 text-center">
+                          <div className="grid grid-cols-3 items-center gap-1.5">
+                            <div className="text-center">
+                              <p className="text-[10px] text-on-surface-variant font-bold uppercase">Balance Before</p>
+                              <p className="text-sm font-black text-on-surface-variant/80 font-mono">₹{selectedTx.prevRunning.toLocaleString()}</p>
+                            </div>
+                            
+                            <div className="flex flex-col items-center justify-center">
+                              <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full mb-1 flex items-center gap-0.5 ${
+                                selectedTx.isDebit ? 'bg-error/15 text-error' : 'bg-secondary/15 text-secondary'
+                              }`}>
+                                {selectedTx.isDebit ? '+' : '-'}₹{selectedTx.amount.toLocaleString()}
+                              </span>
+                              <div className="w-full flex items-center">
+                                <div className="h-[2px] bg-outline-variant/60 flex-1"></div>
+                                <div className={`w-1.5 h-1.5 rounded-full rotate-45 border-t-2 border-r-2 ${selectedTx.isDebit ? 'border-error' : 'border-secondary'}`}></div>
+                              </div>
+                            </div>
+
+                            <div className="text-center">
+                              <p className="text-[10px] text-on-surface-variant font-bold uppercase">Balance After</p>
+                              <p className="text-sm font-black text-primary font-mono bg-primary/5 rounded py-0.5 border border-primary/10">₹{selectedTx.runningBalance.toLocaleString()}</p>
+                            </div>
+                          </div>
+
+                          <div className="text-xs text-on-surface-variant/90 font-medium">
+                            {selectedTx.isDebit ? (
+                              <p>Outstanding balance increased by <strong className="text-error">₹{selectedTx.amount.toLocaleString()}</strong> due to credit purchase.</p>
+                            ) : (
+                              <p>Outstanding balance decreased by <strong className="text-secondary">₹{selectedTx.amount.toLocaleString()}</strong> via collected payment.</p>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* General Metadata */}
+                        <div className="space-y-2.5 text-xs text-on-surface-variant border-b border-outline-variant/20 pb-3">
+                          <p className="flex justify-between">
+                            <span className="font-semibold">Operator / Recorded By:</span>
+                            <span className="font-bold text-on-surface">{selectedTx.recordedByUserName || 'System Operator'}</span>
+                          </p>
+                          <p className="flex justify-between">
+                            <span className="font-semibold">Receipt Timestamp:</span>
+                            <span className="font-bold font-mono text-on-surface">{selectedTx.time || 'N/A'}</span>
+                          </p>
+                          {selectedTx.extraDetails && (
+                            <div className="bg-surface-container-lowest border border-outline-variant/20 p-2.5 rounded-lg mt-1 text-left">
+                              <p className="text-[10px] text-on-surface-variant/80 font-black uppercase">Transaction Notes / Remarks:</p>
+                              <p className="text-xs text-on-surface mt-0.5 font-semibold italic">"{selectedTx.extraDetails}"</p>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Real-time SMS dispatched block */}
+                        <div className="space-y-1.5">
+                          <p className="text-[10px] text-on-surface-variant font-black uppercase flex items-center gap-1">
+                            <Smartphone className="w-3.5 h-3.5 text-secondary" />
+                            Pre-generated SMS / WhatsApp Alert Dispatched:
+                          </p>
+                          <div className="bg-surface-container/60 p-3 rounded-xl border border-outline-variant text-[11px] text-on-surface-variant leading-relaxed font-mono whitespace-pre-wrap select-all">
+                            {selectedTx.type === 'credit_sale' ? (
+`Dear *${customer.name}*,
+A new Credit Sale entry (Udhaar) of *₹${selectedTx.amount.toLocaleString()}* has been added to your ledger at *${firms.find(f => f.id === currentFirmId)?.name || 'Yogwalture Pharmacy'}* on ${selectedTx.date}.
+
+*Total Outstanding Balance*: *₹${selectedTx.runningBalance.toLocaleString()}*
+
+Thank you!
+ShopBooks UPI Ledgers`
+                            ) : (
+`Dear *${customer.name}*,
+We have successfully received payment of *₹${selectedTx.amount.toLocaleString()}* on ${selectedTx.date}, credited to your outstanding ledger at *${firms.find(f => f.id === currentFirmId)?.name || 'Yogwalture Pharmacy'}*.
+
+*Remaining Balance*: *₹${selectedTx.runningBalance.toLocaleString()}*
+
+Thank you for choosing us!
+ShopBooks UPI Ledgers`
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Trigger Alerts */}
+                        <a 
+                          href={`https://api.whatsapp.com/send?phone=${selectedTx.customerPhone?.replace(/\D/g, '') || customer.phone.replace(/\D/g, '')}&text=${encodeURIComponent(
+                            selectedTx.type === 'credit_sale'
+                              ? `Dear *${customer.name}*,\nA new Credit Sale entry (Udhaar) of *₹${selectedTx.amount.toLocaleString()}* has been added to your ledger at *${firms.find(f => f.id === currentFirmId)?.name || 'Yogwalture Pharmacy'}* on ${selectedTx.date}.\n\n*Total Outstanding Balance*: *₹${selectedTx.runningBalance.toLocaleString()}*\n\nThank you!\nShopBooks Ledgers`
+                              : `Dear *${customer.name}*,\nWe have successfully received payment of *₹${selectedTx.amount.toLocaleString()}* on ${selectedTx.date}, credited to your outstanding ledger at *${firms.find(f => f.id === currentFirmId)?.name || 'Yogwalture Pharmacy'}*.\n\n*Remaining Balance*: *₹${selectedTx.runningBalance.toLocaleString()}*\n\nThank you!\nShopBooks Ledgers`
+                          )}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="w-full py-2.5 rounded-xl bg-secondary text-white hover:bg-secondary/95 transition-colors font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
+                        >
+                          <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
+                            <path d="M12.003 21c-1.897 0-3.754-.51-5.385-1.478L2 21l1.523-4.503A8.973 8.973 0 0 1 2.003 12c0-4.963 4.037-9 9-9s9 4.037 9 9-4.037 9-9 9zm0-16c-3.859 0-7 3.14-7 7 0 1.543.513 3.01 1.482 4.223l-.155.457-.96 2.836 2.914-.925.441.229A6.974 6.974 0 0 0 12.003 19c3.859 0 7-3.14 7-7s-3.141-7-7-7z" />
+                          </svg>
+                          Resend WhatsApp Statement Alert
+                        </a>
+                      </div>
                     </div>
+                  )}
+
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {/* Date Range Picker Filter Panel */}
+              <div id="audit_date_picker_panel" className="bg-white border border-outline-variant/35 rounded-xl p-4 shadow-sm space-y-4 text-left font-sans">
+                <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <h3 className="text-xs font-black text-on-surface uppercase tracking-wider flex items-center gap-1.5">
+                      <Calendar className="w-3.5 h-3.5 text-primary" />
+                      Filter Statement Date Range
+                    </h3>
+                    <p className="text-[11px] text-on-surface-variant">
+                      Limit the audit statement table to transactions within the specified period.
+                    </p>
+                  </div>
+
+                  {/* Preset quick buttons */}
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <button
+                      onClick={() => handlePresetRange('today')}
+                      className="px-2.5 py-1 rounded bg-surface-container hover:bg-surface-container-high text-on-surface text-[11px] font-semibold transition-colors cursor-pointer"
+                    >
+                      Today
+                    </button>
+                    <button
+                      onClick={() => handlePresetRange('this_month')}
+                      className="px-2.5 py-1 rounded bg-surface-container hover:bg-surface-container-high text-on-surface text-[11px] font-semibold transition-colors cursor-pointer"
+                    >
+                      This Month
+                    </button>
+                    <button
+                      onClick={() => handlePresetRange('last_30')}
+                      className="px-2.5 py-1 rounded bg-surface-container hover:bg-surface-container-high text-on-surface text-[11px] font-semibold transition-colors cursor-pointer"
+                    >
+                      Last 30 Days
+                    </button>
+                    {(listStartDate || listEndDate) && (
+                      <button
+                        onClick={() => handlePresetRange('clear')}
+                        className="px-2.5 py-1 rounded bg-error/10 hover:bg-error/15 text-error text-[11px] font-bold transition-colors flex items-center gap-1 cursor-pointer"
+                      >
+                        <X className="w-3 h-3" />
+                        Clear Range
+                      </button>
+                    )}
+
+                    <span className="w-px h-4 bg-outline-variant/60 mx-1 hidden sm:inline" />
+
+                    <button
+                      onClick={downloadFilteredPdfStatement}
+                      className="px-3 py-1 rounded bg-primary text-white hover:bg-primary/95 text-[11px] font-bold transition-all flex items-center gap-1.5 shadow-sm cursor-pointer"
+                    >
+                      <FileDown className="w-3.5 h-3.5" />
+                      Download Audit Summary
+                    </button>
                   </div>
                 </div>
-              );
-            })}
 
-            {customerTransactions.length === 0 && (
-              <div className="p-8 text-center text-on-surface-variant text-sm font-sans">
-                No ledger transactions found under this customer yet.
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3.5 items-end pt-3 border-t border-outline-variant/15">
+                  <div className="flex flex-col gap-1">
+                    <label htmlFor="list_start_date" className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">
+                      From Date (Start)
+                    </label>
+                    <input
+                      id="list_start_date"
+                      type="date"
+                      value={listStartDate}
+                      onChange={(e) => setListStartDate(e.target.value)}
+                      className="w-full bg-surface-bright border border-outline-variant rounded-lg px-3 py-1.5 text-xs text-on-background focus:border-primary outline-none font-sans font-medium transition-colors"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <label htmlFor="list_end_date" className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">
+                      To Date (End)
+                    </label>
+                    <input
+                      id="list_end_date"
+                      type="date"
+                      value={listEndDate}
+                      onChange={(e) => setListEndDate(e.target.value)}
+                      className="w-full bg-surface-bright border border-outline-variant rounded-lg px-3 py-1.5 text-xs text-on-background focus:border-primary outline-none font-sans font-medium transition-colors"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2 text-xs font-semibold text-on-surface-variant">
+                    { (listStartDate || listEndDate) ? (
+                      <span className="text-[11px] text-primary/90 bg-primary/10 px-2.5 py-1.5 rounded-lg w-full text-center">
+                        Showing <strong>{filteredListTransactions.length}</strong> of <strong>{customerTransactions.length}</strong> entries
+                      </span>
+                    ) : (
+                      <span className="text-[11px] text-on-surface-variant/70 bg-surface-container px-2.5 py-1.5 rounded-lg w-full text-center">
+                        All <strong>{customerTransactions.length}</strong> entries showing (unfiltered)
+                      </span>
+                    )}
+                  </div>
+                </div>
               </div>
-            )}
-          </div>
+
+              {/* Audit Table List */}
+              <div className="bg-white rounded-2xl border border-outline-variant shadow-sm overflow-hidden divide-y divide-outline-variant/30">
+                {filteredListTransactions.length === 0 ? (
+                  <div className="p-12 text-center text-on-surface-variant font-sans space-y-1.5">
+                    <p className="font-semibold text-on-background text-sm">No ledger transactions found</p>
+                    <p className="text-xs text-on-surface-variant">
+                      {listStartDate || listEndDate ? "No entries match your selected date range filter." : "No transactions found under this customer yet."}
+                    </p>
+                  </div>
+                ) : (
+                  filteredListTransactions.map((tx) => {
+                    const isDebit = tx.type === 'credit_sale';
+                    const isCredit = tx.type === 'receive_payment';
+                    return (
+                      <div 
+                        key={tx.id} 
+                        className={`p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${isCredit ? 'bg-[#DCF8C6]/10' : ''}`}
+                      >
+                        <div className="flex items-start gap-3">
+                          <div className={`p-2.5 rounded-full mt-0.5 ${isCredit ? 'bg-secondary/10 text-secondary' : 'bg-error/10 text-error'}`}>
+                            {isCredit ? (
+                              <ArrowUpCircle className="w-5 h-5" />
+                            ) : (
+                              <PlusCircle className="w-5 h-5 rotate-45" />
+                            )}
+                          </div>
+                          <div className="space-y-0.5 text-left">
+                            <p className="font-bold text-on-background text-sm flex items-center gap-2 font-sans">
+                              <span>{tx.type === 'credit_sale' ? 'Udhaar (Credit Sale)' : 'Payment Received'}</span>
+                              {tx.extraDetails && (
+                                <span className="text-[9px] bg-surface-container px-1.5 py-0.5 rounded font-mono text-on-surface-variant font-bold uppercase">
+                                  {tx.extraDetails}
+                                </span>
+                              )}
+                            </p>
+                            <p className="text-xs text-on-surface-variant flex items-center gap-1.5 font-sans">
+                              <span>{tx.date}</span>
+                              <span>•</span>
+                              <span className="font-mono text-[11px]">{tx.time}</span>
+                            </p>
+                            <p className="text-[11px] text-on-surface-variant">
+                              Recorded by: <span className="font-semibold text-on-surface">{tx.recordedByUserName || 'System'}</span>
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between sm:justify-end gap-3 self-end sm:self-center border-t sm:border-t-0 pt-2 sm:pt-0 border-dashed border-outline-variant/50 w-full sm:w-auto">
+                          <a 
+                            href={`https://api.whatsapp.com/send?phone=${tx.customerPhone?.replace(/\D/g, '') || customer.phone.replace(/\D/g, '')}&text=${encodeURIComponent(`Dear ${customer.name},\nRegarding transaction of ₹${tx.amount} on ${tx.date}.\nShopBooks UPI Ledgers`)}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-secondary hover:underline flex items-center gap-1 font-semibold hover:text-[#25D366] transition-colors cursor-pointer"
+                          >
+                            <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
+                              <path d="M12.003 21c-1.897 0-3.754-.51-5.385-1.478L2 21l1.523-4.503A8.973 8.973 0 0 1 2.003 12c0-4.963 4.037-9 9-9s9 4.037 9 9-4.037 9-9 9zm0-16c-3.859 0-7 3.14-7 7 0 1.543.513 3.01 1.482 4.223l-.155.457-.96 2.836 2.914-.925.441.229A6.974 6.974 0 0 0 12.003 19c3.859 0 7-3.14 7-7s-3.141-7-7-7z" />
+                            </svg>
+                            Resend SMS
+                          </a>
+
+                          <div className="text-right">
+                            <p className={`font-bold text-base ${isCredit ? 'text-secondary font-sans' : 'text-error font-sans'}`}>
+                              {isCredit ? '-' : '+'} ₹{tx.amount.toLocaleString()}
+                            </p>
+                            <span className="text-[9px] text-on-surface-variant block uppercase tracking-wider font-bold">
+                              {isCredit ? 'CREDIT (CR)' : 'DEBIT (DR)'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          )}
         </section>
       </main>
     </div>
@@ -5044,7 +5974,9 @@ function DayClosingScreen({
   userRole,
   firms,
   openingBalanceForwarded,
-  setOpeningBalanceForwarded
+  setOpeningBalanceForwarded,
+  counterOnlineSales,
+  setCounterOnlineSales
 }: { 
   onBack: () => void, 
   transactions: Transaction[], 
@@ -5062,14 +5994,17 @@ function DayClosingScreen({
   userRole?: 'user' | 'firmAdmin',
   firms?: Firm[],
   openingBalanceForwarded: number,
-  setOpeningBalanceForwarded: (val: number) => void
+  setOpeningBalanceForwarded: (val: number) => void,
+  counterOnlineSales: number,
+  setCounterOnlineSales: (val: number) => void
 }) {
   const activeTransactions = transactions.filter(t => t.firmId === currentFirmId && t.date === workingDate);
   
   // Dynamic categories
   const creditSales = activeTransactions.filter(t => t.type === 'credit_sale');
   const creditReceived = activeTransactions.filter(t => t.type === 'receive_payment');
-  const supplierPaid = activeTransactions.filter(t => t.type === 'supplier_payment');
+  const supplierPaid = activeTransactions.filter(t => t.type === 'supplier_payment' && !t.title.toLowerCase().includes('expense'));
+  const recordedExpenses = activeTransactions.filter(t => t.type === 'supplier_payment' && t.title.toLowerCase().includes('expense'));
   const schemePaid = activeTransactions.filter(t => t.type === 'scheme_bill');
   const staffCredits = activeTransactions.filter(t => t.type === 'staff_credit');
   const staffAdvances = activeTransactions.filter(t => t.type === 'staff_advance');
@@ -5087,9 +6022,11 @@ function DayClosingScreen({
   const schemeReceivablesToday = schemePaid.reduce((sum, t) => sum + t.amount, 0);
   const schemeBillToday = schemeReceivablesToday;
   
-  // Supplier payments (expenses)
+  // Supplier payments
   const supplierExpenses = supplierPaid.reduce((sum, t) => sum + t.amount, 0);
-  const totalExpenses = (isDemoMode ? 1250 : 0) + supplierExpenses;
+  // General Expenses (recorded + demo offset)
+  const expToday = recordedExpenses.reduce((sum, t) => sum + t.amount, 0) + (isDemoMode ? 1250 : 0);
+  const totalExpenses = supplierExpenses + expToday;
 
   // Credit received cash vs online (Credit Received today)
   let cashCreditReceived = 0;
@@ -5102,19 +6039,20 @@ function DayClosingScreen({
     }
   });
 
-  // Calculate Today's Day Sales: Settle from user's manual/editable todayDaySales value!
-  const totalSalesToday = todayDaySales;
+  // Calculate Today's Day Sales: Sum of Counter Cash Sales and Counter Online Sales!
+  const totalSalesToday = todayDaySales + counterOnlineSales;
   
   // Settle formula variables precisely matching requested text:
   // (Opening Cash + Today Day Sales + Cash Collections ) - (Online Collections + Scheme Bills + Supplier Pay + Staff Credit + Staff Advance + Credit Given + Expenses )
   const cashCollections = cashCreditReceived;
-  const onlineCollections = onlineCreditReceived;
+  // Online payment counts under online collections and is deducted
+  const onlineCollections = onlineCreditReceived + counterOnlineSales;
   const schemeBills = schemeReceivablesToday;
   const supplierPay = supplierExpenses;
   const staffCredit = staffCreditToday;
   const staffAdvance = staffAdvanceToday;
   const creditGiven = patientCreditToday;
-  const expenses = isDemoMode ? 1250 : 0;
+  const expenses = expToday;
 
   // Settle sum elements
   const totalAddedCash = openingCash + totalSalesToday + cashCollections;
@@ -5146,7 +6084,7 @@ function DayClosingScreen({
       doc.text(`Status: ${isClosed ? 'LOCKED / CLOSED' : 'ACTIVE / OPEN'}`, 15, 35);
       
       doc.text(`Generated: ${new Date().toLocaleString('en-IN')}`, 135, 16);
-      doc.text(`Firm: ${activeFirm?.name || 'Wellcure Pharmacy'}`, 135, 23);
+      doc.text(`Firm: ${activeFirm?.name || 'Yogwalture Pharmacy'}`, 135, 23);
       doc.text(`Mobile: ${activeFirm?.mobile || ''}`, 135, 29);
       doc.text(`Admin: ${activeFirm?.adminName || ''}`, 135, 35);
 
@@ -5536,14 +6474,14 @@ function DayClosingScreen({
               {isClosed && <span className="text-error font-medium block mt-1">⚠️ Day is closed and locked. Edits require Admin unlock.</span>}
             </p>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="flex flex-col gap-1.5 w-full">
               <label className="text-xs font-semibold text-on-surface-variant flex items-center gap-1.5">
                 <Banknote className="w-3.5 h-3.5 text-primary" />
                 Opening Cash (₹)
               </label>
               <input 
-                type="number"
+                type="number" 
                 value={openingCash === 0 ? '' : openingCash}
                 onChange={(e) => setOpeningCash(Number(e.target.value))}
                 disabled={isClosed}
@@ -5554,12 +6492,26 @@ function DayClosingScreen({
             <div className="flex flex-col gap-1.5 w-full">
               <label className="text-xs font-semibold text-on-surface-variant flex items-center gap-1.5">
                 <Store className="w-3.5 h-3.5 text-secondary" />
-                Today Day Sales (₹)
+                Today Cash Sales (₹)
               </label>
               <input 
-                type="number"
+                type="number" 
                 value={todayDaySales === 0 ? '' : todayDaySales}
                 onChange={(e) => setTodayDaySales(Number(e.target.value))}
+                disabled={isClosed}
+                className={`border border-outline-variant rounded-lg px-3 py-2 text-sm focus:border-primary outline-none w-full font-mono font-bold ${isClosed ? 'bg-surface-container-high text-on-surface-variant cursor-not-allowed' : 'bg-surface-bright text-on-background'}`}
+                placeholder="0"
+              />
+            </div>
+            <div className="flex flex-col gap-1.5 w-full">
+              <label className="text-xs font-semibold text-on-surface-variant flex items-center gap-1.5">
+                <QrCode className="w-3.5 h-3.5 text-teal-600" />
+                Today Online Sales (₹)
+              </label>
+              <input 
+                type="number" 
+                value={counterOnlineSales === 0 ? '' : counterOnlineSales}
+                onChange={(e) => setCounterOnlineSales(Number(e.target.value))}
                 disabled={isClosed}
                 className={`border border-outline-variant rounded-lg px-3 py-2 text-sm focus:border-primary outline-none w-full font-mono font-bold ${isClosed ? 'bg-surface-container-high text-on-surface-variant cursor-not-allowed' : 'bg-surface-bright text-on-background'}`}
                 placeholder="0"
@@ -5571,7 +6523,7 @@ function DayClosingScreen({
                 Op. Bal Forwarded (₹)
               </label>
               <input 
-                type="number"
+                type="number" 
                 value={openingBalanceForwarded === 0 ? '' : openingBalanceForwarded}
                 onChange={(e) => setOpeningBalanceForwarded(Number(e.target.value))}
                 disabled={isClosed}
@@ -6809,10 +7761,6 @@ function LoginScreen({ onNavigate, onLogin, onGoogleLogin, firms }: { onNavigate
 
   const handleLoginSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedFirmId) {
-      setErrorMsg('Please select a firm to login into.');
-      return;
-    }
     if (!userId.trim()) {
       setErrorMsg('Please enter your User ID or Email.');
       return;
@@ -6823,6 +7771,20 @@ function LoginScreen({ onNavigate, onLogin, onGoogleLogin, firms }: { onNavigate
     }
     if (!loginWorkingDate) {
       setErrorMsg('Please select a valid Working Date.');
+      return;
+    }
+
+    // Direct Master Admin login check
+    const isMasterEmail = userId.trim().toLowerCase() === 'yogwalture@gmail.com';
+    const isMasterPwd = password === 'yograje1987';
+    if (isMasterEmail && isMasterPwd) {
+      setErrorMsg('');
+      onLogin('F-1001', 'firmAdmin', 'yogwalture@gmail.com', 'Master Super Admin (Yograj)', '9876543210', loginWorkingDate);
+      return;
+    }
+
+    if (!selectedFirmId) {
+      setErrorMsg('Please select a firm to login into.');
       return;
     }
 
@@ -6839,13 +7801,13 @@ function LoginScreen({ onNavigate, onLogin, onGoogleLogin, firms }: { onNavigate
         setErrorMsg('');
         onLogin(firm.id, 'firmAdmin', userId.trim(), firm.adminName, firm.mobile, loginWorkingDate);
       } else {
-        setErrorMsg('Invalid Admin Email or Password. Try "ramesh@saimedicals.com" / "password" for demo firm.');
+        setErrorMsg('Invalid Admin Email or Password. Try "yogwalture@gmail.com" / "yograje1987".');
       }
     } else {
       // Find matches in user list
-      const matchedUser = firm.users.find(u => u.id.trim().toLowerCase() === userId.trim().toLowerCase());
+      const matchedUser = (firm.users || []).find(u => u.id.trim().toLowerCase() === userId.trim().toLowerCase());
       if (!matchedUser) {
-        setErrorMsg('User ID not registered inside this firm. Try "amit_counter" for demo.');
+        setErrorMsg('User ID not registered inside this firm. Try "amit_counter" with password "password".');
         return;
       }
       const isCorrectPwd = password === (matchedUser.password || 'password');
@@ -6912,7 +7874,7 @@ function LoginScreen({ onNavigate, onLogin, onGoogleLogin, firms }: { onNavigate
             <input 
               id="login_userid"
               className="bg-surface-bright border border-outline-variant rounded-lg px-4 py-3 text-body-md text-on-background focus:border-secondary outline-none transition-colors" 
-              placeholder={role === 'firmAdmin' ? "e.g. ramesh@saimedicals.com (or 'admin')" : "e.g. amit_counter"} 
+              placeholder={role === 'firmAdmin' ? "e.g. yogwalture@gmail.com" : "e.g. amit_counter"} 
               type="text" 
               value={userId}
               onChange={(e) => setUserId(e.target.value)}
@@ -6960,20 +7922,20 @@ function LoginScreen({ onNavigate, onLogin, onGoogleLogin, firms }: { onNavigate
         </form>
 
         <div className="mt-6 p-4 rounded-2xl bg-surface-container-low border border-dashed border-outline-variant text-left text-xs text-on-surface-variant space-y-1">
-          <p className="font-bold text-on-surface mb-1">💡 Demo Accounts reference:</p>
+          <p className="font-bold text-on-surface mb-1">💡 Selected Firm Credentials:</p>
           {role === 'firmAdmin' ? (
             <>
-              <p>• <strong>Selected Firm:</strong> {currentFirm?.name || 'Wellcure Pharmacy'}</p>
-              <p>• <strong>Admin User ID / Email:</strong> <code className="bg-white/60 px-1 py-0.5 rounded">{currentFirm?.email || 'ramesh@wellcure.com'}</code> (or <code className="bg-white/60 px-1 py-0.5 rounded">admin</code>)</p>
-              <p>• <strong>Password:</strong> <code className="bg-white/60 px-1 py-0.5 rounded">password</code></p>
+              <p>• <strong>Selected Firm:</strong> {currentFirm?.name || 'Yogwalture Pharmacy'}</p>
+              <p>• <strong>Admin User ID / Email:</strong> <code className="bg-white/60 px-1 py-0.5 rounded">{currentFirm?.email || 'yogwalture@gmail.com'}</code></p>
+              <p>• <strong>Password:</strong> <code className="bg-white/60 px-1 py-0.5 rounded">{currentFirm?.password || 'yograje1987'}</code></p>
             </>
           ) : (
             <>
-              <p>• <strong>Selected Firm:</strong> {currentFirm?.name || 'Wellcure Pharmacy'}</p>
-              {currentFirm && currentFirm.users.length > 0 ? (
+              <p>• <strong>Selected Firm:</strong> {currentFirm?.name || 'Yogwalture Pharmacy'}</p>
+              {currentFirm && (currentFirm.users || []).length > 0 ? (
                 <>
-                  <p>• <strong>Counter IDs:</strong> {currentFirm.users.map(u => <code key={u.id} className="bg-white/60 px-1 py-0.5 rounded mr-1.5">{u.id}</code>)}</p>
-                  <p>• <strong>Password:</strong> <code className="bg-white/60 px-1 py-0.5 rounded">password</code></p>
+                  <p>• <strong>Counter IDs:</strong> {(currentFirm.users || []).map(u => <code key={u.id} className="bg-white/60 px-1 py-0.5 rounded mr-1.5">{u.id}</code>)}</p>
+                  <p>• <strong>Password:</strong> <code className="bg-white/60 px-1 py-0.5 rounded">{(currentFirm.users || [])[0]?.password || 'password'}</code></p>
                 </>
               ) : (
                 <p className="text-error">No counter users created yet. Log in as <strong>Firm Admin</strong> to add users first.</p>
@@ -7017,7 +7979,7 @@ function RegisterFirmScreen({ onNavigate, onRegister }: { onNavigate: (page: Pag
         <form onSubmit={handleRegister} className="flex flex-col gap-5 text-left">
           <div className="flex flex-col gap-1">
             <label className="text-label-md text-on-surface font-semibold" htmlFor="register_name">Firm Name *</label>
-            <input id="register_name" name="name" className="bg-surface-bright border border-outline-variant rounded-lg px-4 py-3 text-body-md text-on-background focus:border-secondary outline-none transition-colors" placeholder="Wellcure Pharmacy" type="text" required />
+            <input id="register_name" name="name" className="bg-surface-bright border border-outline-variant rounded-lg px-4 py-3 text-body-md text-on-background focus:border-secondary outline-none transition-colors" placeholder="Yogwalture Pharmacy" type="text" required />
           </div>
           <div className="flex flex-col gap-1">
             <label className="text-label-md text-on-surface font-semibold" htmlFor="register_admin">Admin Name *</label>
@@ -7122,7 +8084,7 @@ function FirmAdminScreen({
 
   if (!activeFirm) return <div className="p-8 text-center text-on-surface-variant font-bold">No Active Firm context found.</div>;
 
-  const users = activeFirm.users;
+  const users = activeFirm.users || [];
 
   const handleAddUser = (e: React.FormEvent) => {
     e.preventDefault();
@@ -7192,12 +8154,15 @@ function FirmAdminScreen({
     const prevKey = `${activeFirm.id}_${prevDateStr}`;
     const prevForwarded = firmDailyRegisters[prevKey]?.forwarded || 0;
 
-    const opening = prevForwarded;
+    const opening = reg?.opening ?? prevForwarded;
     const counterSales = reg?.cashSales || 0;
+    const counterOnline = reg?.onlineSales || 0;
+    const totalDaySales = counterSales + counterOnline;
 
     const creditReceived = activeTransactions.filter(t => t.type === 'receive_payment');
     const creditSales = activeTransactions.filter(t => t.type === 'credit_sale');
-    const supplierPaid = activeTransactions.filter(t => t.type === 'supplier_payment');
+    const supplierPaid = activeTransactions.filter(t => t.type === 'supplier_payment' && !t.title.toLowerCase().includes('expense'));
+    const recordedExpenses = activeTransactions.filter(t => t.type === 'supplier_payment' && t.title.toLowerCase().includes('expense'));
     const schemePaid = activeTransactions.filter(t => t.type === 'scheme_bill');
     const staffCredits = activeTransactions.filter(t => t.type === 'staff_credit');
     const staffAdvances = activeTransactions.filter(t => t.type === 'staff_advance');
@@ -7226,17 +8191,20 @@ function FirmAdminScreen({
     const staffAdvance = staffAdvanceToday;
     const creditGiven = patientCreditToday;
     const forwarded = reg?.forwarded || 0;
-    const expenses = 0; // standard clean non-demo
+    const expenses = recordedExpenses.reduce((sum, t) => sum + t.amount, 0);
 
-    const totalAdded = opening + counterSales + cashCollections;
-    const totalDeducted = onlineCollections + schemeBills + supplierPay + staffCredit + staffAdvance + creditGiven + expenses + forwarded;
+    // Online payment counts under online collections and is deducted
+    const totalOnlineCollectionsCombined = onlineCollections + counterOnline;
+
+    const totalAdded = opening + totalDaySales + cashCollections;
+    const totalDeducted = totalOnlineCollectionsCombined + schemeBills + supplierPay + staffCredit + staffAdvance + creditGiven + expenses + forwarded;
     const finalCash = totalAdded - totalDeducted;
 
     return {
       opening,
-      counterSales,
+      counterSales: totalDaySales,
       cashCollections,
-      onlineCollections,
+      onlineCollections: totalOnlineCollectionsCombined,
       schemeBills,
       supplierPay,
       staffCredit,

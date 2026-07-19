@@ -1820,6 +1820,22 @@ function Dashboard({
   const activeTransactions = transactions.filter(t => t.firmId === currentFirmId && t.date === workingDate);
   const activeCustomers = customers.filter(c => c.firmId === currentFirmId);
 
+  const handleReopenDay = () => {
+    if (!setFirmDailyRegisters) return;
+    const key = `${currentFirmId}_${workingDate}`;
+    setFirmDailyRegisters(prev => {
+      const existing = prev[key] || { opening: 0, cashSales: 0, onlineSales: 0, closed: false };
+      return {
+        ...prev,
+        [key]: {
+          ...existing,
+          closed: false
+        }
+      };
+    });
+    alert(`Working Day (${workingDate}) ledger reopened successfully! User edits unlocked.`);
+  };
+
   // Sync and Backup states
   const [isBackupPanelOpen, setIsBackupPanelOpen] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -2591,7 +2607,13 @@ function Dashboard({
         )}
 
         <QuickActions onNavigate={onNavigate} />
-        <PageHeader workingDate={workingDate} isClosed={isClosed} onWorkingDateChange={onWorkingDateChange} />
+        <PageHeader 
+          workingDate={workingDate} 
+          isClosed={isClosed} 
+          onWorkingDateChange={onWorkingDateChange} 
+          userRole={userRole}
+          onUnlockDay={handleReopenDay}
+        />
         <BentoGrid 
           transactions={activeTransactions} 
           customers={activeCustomers} 
@@ -3174,11 +3196,15 @@ function MobileHeader({ activeFirm, currentUser, onClearAllData, onOpenSettings,
 function PageHeader({ 
   workingDate, 
   isClosed, 
-  onWorkingDateChange 
+  onWorkingDateChange,
+  userRole,
+  onUnlockDay
 }: { 
   workingDate: string; 
   isClosed: boolean; 
   onWorkingDateChange?: (date: string) => void; 
+  userRole?: 'user' | 'firmAdmin';
+  onUnlockDay?: () => void;
 }) {
   const formattedDate = new Date(workingDate).toLocaleDateString('en-US', {
     weekday: 'long',
@@ -3220,12 +3246,23 @@ function PageHeader({
         </div>
       </div>
       {isClosed ? (
-        <div className="bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-2 shadow-sm max-w-xs shrink-0">
-          <Lock className="w-4 h-4 text-rose-600 shrink-0" />
-          <div className="text-[10px] leading-snug">
-            <span className="font-extrabold block uppercase tracking-wider text-rose-850">DAY LOCKED</span>
-            <span className="text-on-surface-variant/80 font-normal">Edits locked for counter staff.</span>
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 shrink-0 w-full sm:w-auto">
+          <div className="bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-2 shadow-sm">
+            <Lock className="w-4 h-4 text-rose-600 shrink-0" />
+            <div className="text-[10px] leading-snug">
+              <span className="font-extrabold block uppercase tracking-wider text-rose-850">DAY LOCKED</span>
+              <span className="text-on-surface-variant/80 font-normal">Edits locked for counter staff.</span>
+            </div>
           </div>
+          {userRole === 'firmAdmin' && onUnlockDay && (
+            <button
+              onClick={onUnlockDay}
+              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-black text-[11px] uppercase tracking-wider rounded-xl shadow-sm hover:shadow-md active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer border border-emerald-500"
+            >
+              <Unlock className="w-4 h-4" />
+              <span>Unlock Ledger</span>
+            </button>
+          )}
         </div>
       ) : (
         <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-2 shadow-sm max-w-xs shrink-0">

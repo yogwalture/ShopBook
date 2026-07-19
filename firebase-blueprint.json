@@ -67,6 +67,41 @@
         "forwarded": { "type": "number" }
       },
       "required": ["opening", "cashSales", "onlineSales", "closed"]
+    },
+    "Handover": {
+      "title": "Handover",
+      "description": "Daily shift handover between operators with balance declarations",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "firmId": { "type": "string" },
+        "fromUserId": { "type": "string" },
+        "fromUserName": { "type": "string" },
+        "toUserId": { "type": "string" },
+        "toUserName": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "accepted", "rejected"] },
+        "handoverTime": { "type": "string" },
+        "handoverDate": { "type": "string" },
+        "closingCashBalance": { "type": "number" },
+        "closingUpiBalance": { "type": "number" },
+        "totalTransactionsCount": { "type": "number" },
+        "notes": { "type": "string" }
+      },
+      "required": ["id", "firmId", "fromUserId", "fromUserName", "toUserId", "toUserName", "status", "handoverTime", "handoverDate", "closingCashBalance", "closingUpiBalance", "totalTransactionsCount"]
+    },
+    "Backup": {
+      "title": "Backup",
+      "description": "Highly durable automated system data snapshots",
+      "type": "object",
+      "properties": {
+        "firmId": { "type": "string" },
+        "isAuto": { "type": "boolean" },
+        "autoBackupTime": { "type": "string" },
+        "transactions": { "type": "array" },
+        "customers": { "type": "array" },
+        "firmDailyRegisters": { "type": "object" }
+      },
+      "required": ["firmId", "isAuto", "autoBackupTime"]
     }
   },
   "firestore": {
@@ -85,6 +120,14 @@
     "/firmDailyRegisters/{registerId}": {
       "schema": "FirmDailyRegister",
       "description": "Register tracking daily lock/open state balances"
+    },
+    "/handovers/{handoverId}": {
+      "schema": "Handover",
+      "description": "Daily operator shift handovers and status validations"
+    },
+    "/backups/{backupId}": {
+      "schema": "Backup",
+      "description": "System database full-sync recovery and automated backups"
     }
   }
 }

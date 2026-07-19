@@ -55,6 +55,7 @@ import {
   Database,
   Upload,
   ShieldCheck,
+  ShieldAlert,
 } from 'lucide-react';
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { CalendarDatePicker } from './components/CalendarDatePicker';
@@ -80,6 +81,9 @@ import {
   dbSubscribeTransactions,
   dbSubscribeCustomers,
   dbSubscribeDailyRegisters,
+  dbSaveHandover,
+  dbSubscribeHandovers,
+  dbSaveBackup,
 } from './firebase';
 import {
   ResponsiveContainer,
@@ -99,6 +103,22 @@ import {
 export type Page = 'welcome' | 'login' | 'registerFirm' | 'firmAdmin' | 'masterAdmin' | 'dashboard' | 'supplierPayment' | 'receivePayment' | 'receiveCashPayment' | 'credit' | 'transactionHistory' | 'dayClosing' | 'schemeCreditSale' | 'customerLedger' | 'staffCredit' | 'staffAdvance' | 'expense';
 
 export type FirmUser = { name: string, id: string, role: string, mobile: string, password?: string, salary?: number };
+
+export type Handover = {
+  id: string;
+  firmId: string;
+  fromUserId: string;
+  fromUserName: string;
+  toUserId: string;
+  toUserName: string;
+  status: 'pending' | 'accepted' | 'rejected';
+  handoverTime: string;
+  handoverDate: string;
+  closingCashBalance: number;
+  closingUpiBalance: number;
+  totalTransactionsCount: number;
+  notes: string;
+};
 
 export type Transaction = {
   id: string;
@@ -185,6 +205,10 @@ export default function App() {
   }, [autoSendWhatsApp]);
 
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
+  const [isMasterLoginOpen, setIsMasterLoginOpen] = useState(false);
+  const [masterPasswordInput, setMasterPasswordInput] = useState('yograje1987');
+  const [masterLoginError, setMasterLoginError] = useState('');
+  const [isHandoverModalOpen, setIsHandoverModalOpen] = useState(false);
   const [whatsAppNotification, setWhatsAppNotification] = useState<{
     customerName: string;
     customerPhone: string;
@@ -318,6 +342,30 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('shopbooks_transactions', JSON.stringify(transactions));
   }, [transactions]);
+
+  const [handovers, setHandoversState] = useState<Handover[]>(() => {
+    const saved = localStorage.getItem('shopbooks_handovers');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  const setHandovers = useCallback((nextVal: Handover[] | ((prev: Handover[]) => Handover[])) => {
+    setHandoversState(prev => {
+      const next = typeof nextVal === 'function' ? nextVal(prev) : nextVal;
+      const prevIds = new Set(prev.map(h => h.id));
+      const nextIds = new Set(next.map(h => h.id));
+      next.forEach(h => {
+        const oldH = prev.find(p => p.id === h.id);
+        if (!oldH || JSON.stringify(oldH) !== JSON.stringify(h)) {
+          dbSaveHandover(h);
+        }
+      });
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('shopbooks_handovers', JSON.stringify(handovers));
+  }, [handovers]);
 
   const [customers, setCustomersState] = useState<Customer[]>(() => {
     const saved = localStorage.getItem('shopbooks_customers');
@@ -499,24 +547,79 @@ export default function App() {
   const [txLoaded, setTxLoaded] = useState(false);
   const [custLoaded, setCustLoaded] = useState(false);
   const [regLoaded, setRegLoaded] = useState(false);
+  const [handoversLoaded, setHandoversLoaded] = useState(false);
 
   const firmsRef = React.useRef(firms);
   const transactionsRef = React.useRef(transactions);
   const customersRef = React.useRef(customers);
   const firmDailyRegistersRef = React.useRef(firmDailyRegisters);
+  const handoversRef = React.useRef(handovers);
 
   useEffect(() => { firmsRef.current = firms; }, [firms]);
   useEffect(() => { transactionsRef.current = transactions; }, [transactions]);
   useEffect(() => { customersRef.current = customers; }, [customers]);
   useEffect(() => { firmDailyRegistersRef.current = firmDailyRegisters; }, [firmDailyRegisters]);
+  useEffect(() => { handoversRef.current = handovers; }, [handovers]);
 
   const [isFirebaseLoading, setIsFirebaseLoading] = useState(true);
 
   useEffect(() => {
-    if (firmsLoaded && txLoaded && custLoaded && regLoaded) {
+    if (firmsLoaded && txLoaded && custLoaded && regLoaded && handoversLoaded) {
       setIsFirebaseLoading(false);
     }
-  }, [firmsLoaded, txLoaded, custLoaded, regLoaded]);
+  }, [firmsLoaded, txLoaded, custLoaded, regLoaded, handoversLoaded]);
+
+  // Daily Auto-Backup hook
+  useEffect(() => {
+    if (isFirebaseLoading || !currentFirmId) return;
+    
+    // We only trigger auto-backup if we have some data to prevent backing up empty states
+    const firmTransactions = transactions.filter(t => t.firmId === currentFirmId);
+    const firmCustomers = customers.filter(c => c.firmId === currentFirmId);
+    if (firmTransactions.length === 0 && firmCustomers.length === 0) return;
+
+    const todayStr = new Date().toISOString().split('T')[0];
+    const lastBackupKey = `shopbooks_last_auto_backup_date_${currentFirmId}`;
+    const lastAutoBackupDate = localStorage.getItem(lastBackupKey);
+    
+    if (lastAutoBackupDate !== todayStr) {
+      try {
+        const payload = {
+          transactions,
+          customers,
+          firmDailyRegisters: localStorage.getItem('shopbooks_daily_registers') ? JSON.parse(localStorage.getItem('shopbooks_daily_registers')!) : {},
+          autoBackupTime: new Date().toLocaleString('en-IN'),
+          firmId: currentFirmId,
+          isAuto: true
+        };
+        
+        // Save specific daily backup in localStorage
+        localStorage.setItem(`shopbooks_auto_backup_${currentFirmId}_${todayStr}`, JSON.stringify(payload));
+        
+        // Save highly durable daily backup in Cloud Firestore too!
+        dbSaveBackup(`auto_backup_${currentFirmId}_${todayStr}`, payload)
+          .then(() => console.log(`[Cloud Auto-Backup] Successfully synced backup to Firestore for ${todayStr}`))
+          .catch(err => console.error("Cloud Auto-backup sync failed:", err));
+
+        // Also update the main cloud backup replica
+        localStorage.setItem('shopbooks_cloud_backup_database', JSON.stringify({
+          transactions,
+          customers,
+          firmDailyRegisters: payload.firmDailyRegisters
+        }));
+        
+        // Update last sync time
+        const timestamp = new Date().toLocaleString('en-IN');
+        localStorage.setItem('shopbooks_last_sync_timestamp', timestamp);
+        
+        // Mark today as backed up for this firm
+        localStorage.setItem(lastBackupKey, todayStr);
+        console.log(`[Auto-Backup] Daily automatic backup saved for ${todayStr} at ${timestamp}`);
+      } catch (err) {
+        console.error("Auto-backup failed:", err);
+      }
+    }
+  }, [isFirebaseLoading, currentFirmId, transactions, customers]);
 
   // Connection validation + session auto-login + initial collections load
   useEffect(() => {
@@ -627,12 +730,28 @@ export default function App() {
       setRegLoaded(true);
     });
 
+    const unsubHandovers = dbSubscribeHandovers((hList) => {
+      const cloudHandoversMap = new Map(hList.map(h => [h.id, h]));
+      const mergedHandovers = [...hList];
+      for (const h of handoversRef.current) {
+        if (!cloudHandoversMap.has(h.id)) {
+          dbSaveHandover(h);
+          mergedHandovers.push(h);
+        }
+      }
+      setHandoversState(mergedHandovers);
+      setHandoversLoaded(true);
+    }, (err) => {
+      setHandoversLoaded(true);
+    });
+
     return () => {
       unsubAuth();
       unsubFirms();
       unsubTransactions();
       unsubCustomers();
       unsubRegisters();
+      unsubHandovers();
     };
   }, []);
 
@@ -892,10 +1011,13 @@ export default function App() {
   };
 
   const handleGoogleSignInFlow = async () => {
-    const promptValue = window.prompt("To login as Master Admin, please enter the Master Admin Password (or type 'google' to authenticate via your Google Account):", "yograje1987");
-    if (promptValue === null) return; // cancelled
+    setMasterPasswordInput('yograje1987');
+    setMasterLoginError('');
+    setIsMasterLoginOpen(true);
+  };
 
-    if (promptValue.trim() === 'yograje1987' || promptValue.trim() === 'yograje') {
+  const handleMasterPasswordSubmit = (enteredPassword: string) => {
+    if (enteredPassword.trim() === 'yograje1987' || enteredPassword.trim() === 'yograje') {
       setUserRole('firmAdmin');
       setCurrentUser({
         id: 'master_super_admin',
@@ -903,31 +1025,34 @@ export default function App() {
         role: 'Master Admin',
         mobile: 'yogwalture@gmail.com'
       });
+      setIsMasterLoginOpen(false);
       setCurrentPage('masterAdmin');
       alert("Welcome Master Super Admin (yogwalture@gmail.com)!");
-      return;
-    } else if (promptValue.trim().toLowerCase() === 'google') {
-      try {
-        const u = await triggerGoogleSignIn();
-        if (u && u.email === 'yogwalture@gmail.com') {
-          setUserRole('firmAdmin');
-          setCurrentUser({
-            id: 'master_super_admin',
-            name: 'Master Super Admin (yogwalture@gmail.com)',
-            role: 'Master Admin',
-            mobile: 'yogwalture@gmail.com'
-          });
-          setCurrentPage('masterAdmin');
-          alert("Welcome Master Super Admin (yogwalture@gmail.com)!");
-        } else {
-          alert("Access Denied: Google login is reserved for the Master Admin (yogwalture@gmail.com).");
-          await triggerSignOut();
-        }
-      } catch (err) {
-        alert("Google Sign In failed or cancelled inside browser iFrame.");
-      }
     } else {
-      alert("Incorrect password. Please try again.");
+      setMasterLoginError("Incorrect password. Please try again or use Yograj's default.");
+    }
+  };
+
+  const handleMasterGoogleLogin = async () => {
+    try {
+      const u = await triggerGoogleSignIn();
+      if (u && u.email === 'yogwalture@gmail.com') {
+        setUserRole('firmAdmin');
+        setCurrentUser({
+          id: 'master_super_admin',
+          name: 'Master Super Admin (yogwalture@gmail.com)',
+          role: 'Master Admin',
+          mobile: 'yogwalture@gmail.com'
+        });
+        setIsMasterLoginOpen(false);
+        setCurrentPage('masterAdmin');
+        alert("Welcome Master Super Admin (yogwalture@gmail.com)!");
+      } else {
+        setMasterLoginError("Access Denied: Google login is reserved for the Master Admin (yogwalture@gmail.com).");
+        await triggerSignOut();
+      }
+    } catch (err) {
+      setMasterLoginError("Google Sign In failed or cancelled inside browser iFrame.");
     }
   };
 
@@ -935,6 +1060,57 @@ export default function App() {
     triggerSignOut();
     setUserRole('user');
     setCurrentPage('welcome');
+  };
+
+  const handleConfirmHandover = (
+    toUser: { id: string; name: string },
+    notes: string,
+    cash: number,
+    upi: number,
+    txCount: number
+  ) => {
+    if (!currentUser || !currentFirmId) return;
+
+    const newHandover: Handover = {
+      id: `ho_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      firmId: currentFirmId,
+      fromUserId: currentUser.id,
+      fromUserName: currentUser.name,
+      toUserId: toUser.id,
+      toUserName: toUser.name,
+      handoverDate: workingDate,
+      handoverTime: new Date().toISOString(),
+      closingCashBalance: cash,
+      closingUpiBalance: upi,
+      totalTransactionsCount: txCount,
+      notes: notes,
+      status: 'pending'
+    };
+
+    setHandovers(prev => [...prev, newHandover]);
+    setIsHandoverModalOpen(false);
+    handleLogout();
+    alert(`Handover submitted to ${toUser.name} successfully. You have been safely logged out.`);
+  };
+
+  const pendingHandover = useMemo(() => {
+    if (!currentUser || !currentFirmId) return null;
+    return handovers.find(h => 
+      h.firmId === currentFirmId && 
+      h.toUserId.trim().toLowerCase() === currentUser.id.trim().toLowerCase() && 
+      h.status === 'pending'
+    );
+  }, [handovers, currentUser, currentFirmId]);
+
+  const showHandoverAcceptanceOverlay = !!pendingHandover && currentPage !== 'welcome' && currentPage !== 'login' && currentPage !== 'registerFirm';
+
+  const handleAcceptHandover = (handoverId: string) => {
+    setHandovers(prev => prev.map(h => {
+      if (h.id === handoverId) {
+        return { ...h, status: 'accepted' };
+      }
+      return h;
+    }));
   };
 
   const isDayClosed = !!firmDailyRegisters[`${currentFirmId}_${workingDate}`]?.closed;
@@ -964,12 +1140,15 @@ export default function App() {
             currentUser={currentUser} 
             onClearAllData={handleClearAllData}
             onOpenSettings={() => setIsPosSettingsOpen(true)}
+            onOpenHandover={() => setIsHandoverModalOpen(true)}
           />
           <MobileHeader 
             activeFirm={firms.find(f => f.id === currentFirmId)} 
             currentUser={currentUser} 
             onClearAllData={handleClearAllData}
             onOpenSettings={() => setIsPosSettingsOpen(true)}
+            onOpenHandover={() => setIsHandoverModalOpen(true)}
+            onNavigate={setCurrentPage}
           />
         </>
       )}
@@ -1031,6 +1210,7 @@ export default function App() {
           userRole={userRole}
           firms={firms}
           onWorkingDateChange={setWorkingDate}
+          onOpenHandover={() => setIsHandoverModalOpen(true)}
         />
       )}
       {currentPage === 'credit' && (
@@ -1491,6 +1671,99 @@ export default function App() {
           }}
         />
       )}
+
+      {isMasterLoginOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-surface-container-lowest border border-outline-variant rounded-3xl w-full max-w-md p-6 shadow-2xl relative text-left">
+            <button 
+              onClick={() => setIsMasterLoginOpen(false)}
+              className="absolute top-5 right-5 text-on-surface-variant hover:bg-surface-container-low p-2 rounded-full cursor-pointer transition-all"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-12 h-12 rounded-2xl bg-primary/15 flex items-center justify-center text-primary">
+                <ShieldCheck className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-extrabold text-[20px] text-on-surface leading-tight">Master Admin Secure Access</h3>
+                <p className="text-xs text-on-surface-variant font-medium mt-0.5">Yograj Super Administration Zone</p>
+              </div>
+            </div>
+
+            {masterLoginError && (
+              <div className="bg-error-container/20 border border-error text-error text-xs p-3 rounded-xl mb-4 leading-normal">
+                ⚠️ {masterLoginError}
+              </div>
+            )}
+
+            <div className="space-y-4">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-black uppercase tracking-wider text-primary">Master Admin Password</label>
+                <input 
+                  type="password" 
+                  value={masterPasswordInput} 
+                  onChange={(e) => setMasterPasswordInput(e.target.value)}
+                  placeholder="Enter Master Password"
+                  className="w-full bg-surface-container-lowest text-on-surface border border-outline-variant rounded-xl px-4 py-3 text-sm font-semibold focus:outline-none focus:border-primary transition-all"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      handleMasterPasswordSubmit(masterPasswordInput);
+                    }
+                  }}
+                />
+                <p className="text-[10px] text-on-surface-variant font-medium mt-0.5">
+                  Hint: Default superpassword is <code className="bg-surface-container-high px-1 py-0.5 rounded font-mono">yograje1987</code>
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-2.5 pt-2">
+                <button 
+                  onClick={() => handleMasterPasswordSubmit(masterPasswordInput)}
+                  className="w-full bg-primary text-on-primary font-bold text-sm py-3.5 rounded-xl transition-all hover:bg-primary/90 cursor-pointer text-center flex items-center justify-center gap-2 shadow-sm"
+                >
+                  <Unlock className="w-4 h-4" />
+                  Unlock Master Console
+                </button>
+
+                <div className="relative flex py-2 items-center">
+                  <div className="flex-grow border-t border-outline-variant/50"></div>
+                  <span className="flex-shrink mx-3 text-[10px] text-on-surface-variant font-black uppercase tracking-wider">Alternative Secure Method</span>
+                  <div className="flex-grow border-t border-outline-wider"></div>
+                </div>
+
+                <button 
+                  onClick={handleMasterGoogleLogin}
+                  className="w-full bg-surface text-primary border border-outline-variant/80 hover:bg-surface-container-high font-bold text-sm py-3.5 rounded-xl transition-all cursor-pointer text-center flex items-center justify-center gap-2 shadow-xs"
+                >
+                  <Smartphone className="w-4 h-4 text-primary" />
+                  Authenticate via Google SSO
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showHandoverAcceptanceOverlay && pendingHandover && (
+        <HandoverAcceptanceOverlay
+          handover={pendingHandover}
+          onAccept={() => handleAcceptHandover(pendingHandover.id)}
+          onLogout={handleLogout}
+        />
+      )}
+
+      <HandoverModal
+        isOpen={isHandoverModalOpen}
+        onClose={() => setIsHandoverModalOpen(false)}
+        currentUser={currentUser}
+        currentFirmId={currentFirmId}
+        workingDate={workingDate}
+        transactions={transactions}
+        activeFirm={firms.find(f => f.id === currentFirmId)}
+        onConfirmHandover={handleConfirmHandover}
+      />
     </div>
   );
 }
@@ -1517,7 +1790,8 @@ function Dashboard({
   setFirmDailyRegisters,
   userRole,
   firms,
-  onWorkingDateChange
+  onWorkingDateChange,
+  onOpenHandover
 }: { 
   onNavigate: (page: Page) => void, 
   onSelectCustomer?: (id: string | null) => void,
@@ -1540,7 +1814,8 @@ function Dashboard({
   setFirmDailyRegisters?: React.Dispatch<React.SetStateAction<Record<string, { opening: number; cashSales: number; onlineSales: number; closed: boolean }>>>,
   userRole?: 'user' | 'firmAdmin',
   firms?: Firm[],
-  onWorkingDateChange?: (date: string) => void
+  onWorkingDateChange?: (date: string) => void,
+  onOpenHandover?: () => void
 }) {
   const activeTransactions = transactions.filter(t => t.firmId === currentFirmId && t.date === workingDate);
   const activeCustomers = customers.filter(c => c.firmId === currentFirmId);
@@ -1847,181 +2122,195 @@ function Dashboard({
               <p className="text-xs text-on-surface-variant">ID: {activeFirm?.id} • {activeFirm?.email} • {activeFirm?.mobile}</p>
             </div>
           </div>
-          <div className="flex items-center gap-3 bg-surface-container-low/80 backdrop-blur px-4 py-2.5 rounded-xl border border-outline-variant/30 w-full sm:w-auto">
-            <div className="w-10 h-10 rounded-full bg-secondary-container text-on-secondary-container flex items-center justify-center font-bold text-sm shrink-0 uppercase">
-              {currentUser?.name ? currentUser.name.slice(0, 2) : 'SB'}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
+            <div className="flex items-center gap-3 bg-surface-container-low/80 backdrop-blur px-4 py-2.5 rounded-xl border border-outline-variant/30 flex-1 sm:flex-initial">
+              <div className="w-10 h-10 rounded-full bg-secondary-container text-on-secondary-container flex items-center justify-center font-bold text-sm shrink-0 uppercase">
+                {currentUser?.name ? currentUser.name.slice(0, 2) : 'SB'}
+              </div>
+              <div className="min-w-0 flex-1 text-left">
+                <p className="text-xs text-on-surface-variant font-medium">Logged in User</p>
+                <h4 className="text-sm font-semibold text-on-surface truncate pr-pr-2 truncate">{currentUser?.name}</h4>
+                <p className="text-[10px] text-on-surface-variant/80 font-mono italic truncate">{currentUser?.role} • {currentUser?.mobile}</p>
+              </div>
             </div>
-            <div className="min-w-0 flex-1 text-left">
-              <p className="text-xs text-on-surface-variant font-medium">Logged in User</p>
-              <h4 className="text-sm font-semibold text-on-surface truncate pr-pr-2 truncate">{currentUser?.name}</h4>
-              <p className="text-[10px] text-on-surface-variant/80 font-mono italic truncate">{currentUser?.role} • {currentUser?.mobile}</p>
-            </div>
+            {onOpenHandover && (
+              <button 
+                type="button"
+                onClick={onOpenHandover}
+                className="px-4 py-3 bg-secondary hover:bg-secondary/90 text-white text-xs font-black rounded-xl transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer uppercase tracking-wider h-11"
+              >
+                <ArrowLeftRight className="w-4 h-4 text-white" />
+                <span>Handover Duty</span>
+              </button>
+            )}
           </div>
         </section>
 
         {/* System Synchronization & Database Backup Hub */}
-        <section className="bg-surface-container-lowest border border-outline-variant/35 rounded-2xl shadow-[0_4px_20px_rgba(0,0,0,0.02)] overflow-hidden transition-all duration-300">
-          {/* Header */}
-          <button 
-            type="button"
-            onClick={() => setIsBackupPanelOpen(!isBackupPanelOpen)}
-            className="w-full flex items-center justify-between p-5 bg-surface-container-low/40 hover:bg-surface-container-low/75 transition-colors cursor-pointer text-left"
-          >
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-primary/10 text-primary rounded-xl shrink-0">
-                <Database className="w-5 h-5" />
+        {userRole === 'firmAdmin' && (
+          <section className="bg-surface-container-lowest border border-outline-variant/35 rounded-2xl shadow-[0_4px_20px_rgba(0,0,0,0.02)] overflow-hidden transition-all duration-300">
+            {/* Header */}
+            <button 
+              type="button"
+              onClick={() => setIsBackupPanelOpen(!isBackupPanelOpen)}
+              className="w-full flex items-center justify-between p-5 bg-surface-container-low/40 hover:bg-surface-container-low/75 transition-colors cursor-pointer text-left"
+            >
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-primary/10 text-primary rounded-xl shrink-0">
+                  <Database className="w-5 h-5" />
+                </div>
+                <div className="text-left">
+                  <h3 className="font-extrabold text-sm text-on-surface flex items-center gap-2">
+                    System Database Sync & Backup Hub
+                    <span className="text-[10px] bg-emerald-500/10 text-emerald-600 font-bold px-2 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Reconciled
+                    </span>
+                  </h3>
+                  <p className="text-xs text-on-surface-variant">Manually export, restore, or sync offline database to handle browser cache clearances safely.</p>
+                </div>
               </div>
-              <div className="text-left">
-                <h3 className="font-extrabold text-sm text-on-surface flex items-center gap-2">
-                  System Database Sync & Backup Hub
-                  <span className="text-[10px] bg-emerald-500/10 text-emerald-600 font-bold px-2 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Reconciled
-                  </span>
-                </h3>
-                <p className="text-xs text-on-surface-variant">Manually export, restore, or sync offline database to handle browser cache clearances safely.</p>
+              <div className="text-on-surface-variant ml-2">
+                <span className="text-xs font-semibold text-primary block sm:inline">
+                  {isBackupPanelOpen ? 'Collapse Tools ▲' : 'Expand Tools ▼'}
+                </span>
               </div>
-            </div>
-            <div className="text-on-surface-variant ml-2">
-              <span className="text-xs font-semibold text-primary block sm:inline">
-                {isBackupPanelOpen ? 'Collapse Tools ▲' : 'Expand Tools ▼'}
-              </span>
-            </div>
-          </button>
+            </button>
 
-          {isBackupPanelOpen && (
-            <div className="p-6 border-t border-outline-variant/20 space-y-5 animate-fade-in text-left">
-              {/* Alert Notifications inside panel */}
-              {panelSuccess && (
-                <div className="p-3 bg-emerald-50 text-emerald-800 rounded-xl border border-emerald-200 text-xs flex items-center gap-2.5">
-                  <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span className="font-medium">{panelSuccess}</span>
-                </div>
-              )}
-              {panelError && (
-                <div className="p-3 bg-rose-50 text-rose-800 rounded-xl border border-rose-200 text-xs flex items-center gap-2.5">
-                  <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
-                  <span className="font-medium">{panelError}</span>
-                </div>
-              )}
-
-              {/* Sync Loader Overlay */}
-              {isSyncing && (
-                <div className="p-4 bg-primary/5 border border-primary/20 text-primary rounded-xl flex items-center gap-3 justify-center text-xs font-bold animate-pulse">
-                  <svg className="animate-spin h-4 w-4 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  <span>{syncStatusMsg}</span>
-                </div>
-              )}
-
-              <div className="grid md:grid-cols-2 gap-6">
-                {/* Section A: Replicated Standalone Cloud Mirror */}
-                <div className="bg-surface-container-low/60 rounded-xl p-5 border border-outline-variant/30 flex flex-col justify-between space-y-4">
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-xs font-bold text-on-surface uppercase tracking-wider block">Sandbox Cloud Sync</span>
-                      <span className="text-[10px] text-on-surface-variant font-mono">Status: Connected</span>
-                    </div>
-                    <p className="text-xs text-on-surface-variant leading-relaxed">
-                      Replicate and lock a copy of your Ledger database into the ShopBooks offline mirror space. If local storage is ever deleted, you can instantly run a quick recovery check to restore everything instantly.
-                    </p>
-                    <div className="mt-3.5 flex items-center gap-2 text-[11px] text-on-surface-variant/90 bg-surface-container-low p-2 rounded-lg border border-outline-variant/15">
-                      <span className="font-bold">Last Replicated Sync:</span>
-                      <span className="text-primary font-mono font-bold bg-primary/10 px-2 py-0.5 rounded-full">{lastSyncTime}</span>
-                    </div>
+            {isBackupPanelOpen && (
+              <div className="p-6 border-t border-outline-variant/20 space-y-5 animate-fade-in text-left">
+                {/* Alert Notifications inside panel */}
+                {panelSuccess && (
+                  <div className="p-3 bg-emerald-50 text-emerald-800 rounded-xl border border-emerald-200 text-xs flex items-center gap-2.5">
+                    <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span className="font-medium">{panelSuccess}</span>
                   </div>
-
-                  <div className="flex flex-wrap gap-2 pt-2">
-                    <button
-                      type="button"
-                      disabled={isSyncing}
-                      onClick={triggerCloudSync}
-                      className="px-4 py-2 bg-primary hover:bg-primary-hover text-white text-xs font-bold rounded-lg transition-all shadow-sm flex items-center gap-1.5 focus:ring-2 focus:ring-primary/20 disabled:opacity-50 cursor-pointer-none"
-                    >
-                      <CloudUpload className="w-4 h-4" />
-                      <span>Sync & Backup Now</span>
-                    </button>
-                    <button
-                      type="button"
-                      disabled={isSyncing}
-                      onClick={recoverFromCloud}
-                      className="px-4 py-2 bg-surface-container-highest hover:bg-surface-container-high text-on-surface text-xs font-bold rounded-lg border border-outline-variant/30 transition-all flex items-center gap-1.5 focus:ring-2 focus:ring-outline/20 disabled:opacity-50 cursor-pointer-none"
-                    >
-                      <CloudDownload className="w-4 h-4 text-emerald-600 animate-bounce" style={{ animationDuration: '3s' }} />
-                      <span>One-Click Cloud Restore</span>
-                    </button>
+                )}
+                {panelError && (
+                  <div className="p-3 bg-rose-50 text-rose-800 rounded-xl border border-rose-200 text-xs flex items-center gap-2.5">
+                    <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                    <span className="font-medium">{panelError}</span>
                   </div>
-                </div>
+                )}
 
-                {/* Section B: Hardcopy JSON Ledger Descriptors */}
-                <div className="bg-surface-container-low/60 rounded-xl p-5 border border-outline-variant/30 flex flex-col justify-between space-y-4">
-                  <div>
-                    <span className="text-xs font-bold text-on-surface uppercase tracking-wider block mb-2">Manual File Backup Descriptors</span>
-                    <p className="text-xs text-on-surface-variant leading-relaxed">
-                      Download a complete, offline-readable backup database file (JSON representation) directly onto your desktop or mobile device. Use this file at any time below to load your shop ledger on other browsers.
-                    </p>
+                {/* Sync Loader Overlay */}
+                {isSyncing && (
+                  <div className="p-4 bg-primary/5 border border-primary/20 text-primary rounded-xl flex items-center gap-3 justify-center text-xs font-bold animate-pulse">
+                    <svg className="animate-spin h-4 w-4 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span>{syncStatusMsg}</span>
+                  </div>
+                )}
 
-                    {/* Import Preview Summary Container */}
-                    {importPreview && (
-                      <div className="mt-3 p-3 bg-amber-50 rounded-lg border border-amber-200 text-xs text-left animate-fade-in space-y-2">
-                        <div className="font-bold text-amber-800 flex items-center gap-1.5">
-                          <CheckCircle className="w-4 h-4 text-amber-600" />
-                          <span>Detected Schema Descriptor:</span>
-                        </div>
-                        <ul className="text-amber-700 space-y-0.5 list-disc list-inside font-mono text-[11px]">
-                          <li>Transactions count: <strong className="text-amber-900">{importPreview.transactions.length}</strong></li>
-                          <li>Customers ledger count: <strong className="text-amber-900">{importPreview.customers.length}</strong></li>
-                          <li>Daily closing records: <strong className="text-amber-900">{Object.keys(importPreview.firmDailyRegisters || {}).length} dates</strong></li>
-                        </ul>
-                        <div className="flex gap-2 pt-1">
-                          <button
-                            type="button"
-                            onClick={confirmImport}
-                            className="bg-amber-600 hover:bg-amber-700 text-white font-extrabold px-3 py-1.5 rounded-md text-[10px] shrink-0 transition-colors cursor-pointer uppercase tracking-wider shadow-sm"
-                          >
-                            Proceed & Apply Override
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setImportPreview(null)}
-                            className="bg-white hover:bg-amber-100 text-amber-800 border border-amber-300 font-extrabold px-3 py-1.5 rounded-md text-[10px] shrink-0 transition-colors cursor-pointer"
-                          >
-                            Cancel
-                          </button>
-                        </div>
+                <div className="grid md:grid-cols-2 gap-6">
+                  {/* Section A: Replicated Standalone Cloud Mirror */}
+                  <div className="bg-surface-container-low/60 rounded-xl p-5 border border-outline-variant/30 flex flex-col justify-between space-y-4">
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-bold text-on-surface uppercase tracking-wider block">Sandbox Cloud Sync</span>
+                        <span className="text-[10px] text-on-surface-variant font-mono">Status: Connected</span>
                       </div>
-                    )}
-                  </div>
+                      <p className="text-xs text-on-surface-variant leading-relaxed">
+                        Replicate and lock a copy of your Ledger database into the ShopBooks offline mirror space. If local storage is ever deleted, you can instantly run a quick recovery check to restore everything instantly.
+                      </p>
+                      <div className="mt-3.5 flex items-center gap-2 text-[11px] text-on-surface-variant/90 bg-surface-container-low p-2 rounded-lg border border-outline-variant/15">
+                        <span className="font-bold">Last Replicated Sync:</span>
+                        <span className="text-primary font-mono font-bold bg-primary/10 px-2 py-0.5 rounded-full">{lastSyncTime}</span>
+                      </div>
+                    </div>
 
-                  <div className="flex flex-col gap-3 pt-2">
-                    <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex flex-wrap gap-2 pt-2">
                       <button
                         type="button"
-                        onClick={triggerJSONDownload}
-                        className="px-4 py-2 bg-secondary text-white hover:bg-secondary-hover text-xs font-bold rounded-lg transition-all shadow-sm flex items-center gap-1.5 cursor-pointer-none"
+                        disabled={isSyncing}
+                        onClick={triggerCloudSync}
+                        className="px-4 py-2 bg-primary hover:bg-primary-hover text-white text-xs font-bold rounded-lg transition-all shadow-sm flex items-center gap-1.5 focus:ring-2 focus:ring-primary/20 disabled:opacity-50 cursor-pointer-none"
                       >
-                        <Download className="w-4 h-4" />
-                        <span>Export Backup JSON</span>
+                        <CloudUpload className="w-4 h-4" />
+                        <span>Sync & Backup Now</span>
                       </button>
+                      <button
+                        type="button"
+                        disabled={isSyncing}
+                        onClick={recoverFromCloud}
+                        className="px-4 py-2 bg-surface-container-highest hover:bg-surface-container-high text-on-surface text-xs font-bold rounded-lg border border-outline-variant/30 transition-all flex items-center gap-1.5 focus:ring-2 focus:ring-outline/20 disabled:opacity-50 cursor-pointer-none"
+                      >
+                        <CloudDownload className="w-4 h-4 text-emerald-600 animate-bounce" style={{ animationDuration: '3s' }} />
+                        <span>One-Click Cloud Restore</span>
+                      </button>
+                    </div>
+                  </div>
 
-                      <label className="px-4 py-2 bg-surface-container-highest hover:bg-surface-container-high text-on-surface text-xs font-bold rounded-lg border border-outline-variant/30 cursor-pointer transition-all flex items-center gap-1.5">
-                        <Upload className="w-4 h-4 text-primary" />
-                        <span>Import Backup File</span>
-                        <input
-                          type="file"
-                          accept=".json"
-                          onChange={handleFileImport}
-                          className="hidden"
-                        />
-                      </label>
+                  {/* Section B: Hardcopy JSON Ledger Descriptors */}
+                  <div className="bg-surface-container-low/60 rounded-xl p-5 border border-outline-variant/30 flex flex-col justify-between space-y-4">
+                    <div>
+                      <span className="text-xs font-bold text-on-surface uppercase tracking-wider block mb-2">Manual File Backup Descriptors</span>
+                      <p className="text-xs text-on-surface-variant leading-relaxed">
+                        Download a complete, offline-readable backup database file (JSON representation) directly onto your desktop or mobile device. Use this file at any time below to load your shop ledger on other browsers.
+                      </p>
+
+                      {/* Import Preview Summary Container */}
+                      {importPreview && (
+                        <div className="mt-3 p-3 bg-amber-50 rounded-lg border border-amber-200 text-xs text-left animate-fade-in space-y-2">
+                          <div className="font-bold text-amber-800 flex items-center gap-1.5">
+                            <CheckCircle className="w-4 h-4 text-amber-600" />
+                            <span>Detected Schema Descriptor:</span>
+                          </div>
+                          <ul className="text-amber-700 space-y-0.5 list-disc list-inside font-mono text-[11px]">
+                            <li>Transactions count: <strong className="text-amber-900">{importPreview.transactions.length}</strong></li>
+                            <li>Customers ledger count: <strong className="text-amber-900">{importPreview.customers.length}</strong></li>
+                            <li>Daily closing records: <strong className="text-amber-900">{Object.keys(importPreview.firmDailyRegisters || {}).length} dates</strong></li>
+                          </ul>
+                          <div className="flex gap-2 pt-1">
+                            <button
+                              type="button"
+                              onClick={confirmImport}
+                              className="bg-amber-600 hover:bg-amber-700 text-white font-extrabold px-3 py-1.5 rounded-md text-[10px] shrink-0 transition-colors cursor-pointer uppercase tracking-wider shadow-sm"
+                            >
+                              Proceed & Apply Override
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setImportPreview(null)}
+                              className="bg-white hover:bg-amber-100 text-amber-800 border border-amber-300 font-extrabold px-3 py-1.5 rounded-md text-[10px] shrink-0 transition-colors cursor-pointer"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex flex-col gap-3 pt-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={triggerJSONDownload}
+                          className="px-4 py-2 bg-secondary text-white hover:bg-secondary-hover text-xs font-bold rounded-lg transition-all shadow-sm flex items-center gap-1.5 cursor-pointer-none"
+                        >
+                          <Download className="w-4 h-4" />
+                          <span>Export Backup JSON</span>
+                        </button>
+
+                        <label className="px-4 py-2 bg-surface-container-highest hover:bg-surface-container-high text-on-surface text-xs font-bold rounded-lg border border-outline-variant/30 cursor-pointer transition-all flex items-center gap-1.5">
+                          <Upload className="w-4 h-4 text-primary" />
+                          <span>Import Backup File</span>
+                          <input
+                            type="file"
+                            accept=".json"
+                            onChange={handleFileImport}
+                            className="hidden"
+                          />
+                        </label>
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
-            </div>
-          )}
-        </section>
+            )}
+          </section>
+        )}
 
         {/* Firm Admin Board: Employee Salary Settlement Center */}
         {userRole === 'firmAdmin' && (
@@ -2696,7 +2985,7 @@ function ExpenseScreen({
   );
 }
 
-function SideNav({ onNavigate, activePage, userRole, onLogout, activeFirm, currentUser, onClearAllData, onOpenSettings }: { onNavigate: (page: Page) => void, activePage: Page, userRole?: 'user' | 'firmAdmin', onLogout?: () => void, activeFirm?: Firm, currentUser?: any, onClearAllData?: () => void, onOpenSettings?: () => void }) {
+function SideNav({ onNavigate, activePage, userRole, onLogout, activeFirm, currentUser, onClearAllData, onOpenSettings, onOpenHandover }: { onNavigate: (page: Page) => void, activePage: Page, userRole?: 'user' | 'firmAdmin', onLogout?: () => void, activeFirm?: Firm, currentUser?: any, onClearAllData?: () => void, onOpenSettings?: () => void, onOpenHandover?: () => void }) {
   return (
     <nav className="hidden md:flex flex-col fixed left-0 top-0 h-full w-[280px] bg-surface-container-lowest border-r border-outline-variant z-50">
       <div className="p-6">
@@ -2725,6 +3014,12 @@ function SideNav({ onNavigate, activePage, userRole, onLogout, activeFirm, curre
             <span className="text-label-md text-primary">Admin Portal</span>
           </button>
         )}
+        {currentUser?.id === 'master_super_admin' && (
+          <button onClick={() => onNavigate('masterAdmin')} className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors duration-200 mt-2 border border-primary/30 ${activePage === 'masterAdmin' ? 'bg-primary/20 text-primary' : 'text-primary hover:bg-primary/10'}`}>
+            <ShieldAlert className="w-6 h-6 text-primary animate-pulse" />
+            <span className="text-label-md text-primary font-bold">Master Console</span>
+          </button>
+        )}
       </div>
       <div className="p-4 border-t border-outline-variant space-y-4">
         {activeFirm && currentUser && (
@@ -2746,6 +3041,12 @@ function SideNav({ onNavigate, activePage, userRole, onLogout, activeFirm, curre
             <span className="text-label-md">Erase Demo Data</span>
           </button>
         )}
+        {onOpenHandover && (
+          <button onClick={onOpenHandover} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors duration-200 text-secondary hover:bg-secondary/10 border border-secondary/20 shrink-0">
+            <ArrowLeftRight className="w-6 h-6 text-secondary" />
+            <span className="text-label-md">Handover Shift</span>
+          </button>
+        )}
         <button onClick={onLogout} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors duration-200 text-error hover:bg-error-container/20">
           <LogOut className="w-6 h-6" />
           <span className="text-label-md">Logout</span>
@@ -2755,7 +3056,7 @@ function SideNav({ onNavigate, activePage, userRole, onLogout, activeFirm, curre
   );
 }
 
-function MobileHeader({ activeFirm, currentUser, onClearAllData, onOpenSettings }: { activeFirm?: Firm, currentUser?: any, onClearAllData?: () => void, onOpenSettings?: () => void }) {
+function MobileHeader({ activeFirm, currentUser, onClearAllData, onOpenSettings, onOpenHandover, onNavigate }: { activeFirm?: Firm, currentUser?: any, onClearAllData?: () => void, onOpenSettings?: () => void, onOpenHandover?: () => void, onNavigate?: (page: Page) => void }) {
   const [showProfile, setShowProfile] = useState(false);
 
   return (
@@ -2830,6 +3131,32 @@ function MobileHeader({ activeFirm, currentUser, onClearAllData, onOpenSettings 
               <Settings className="w-4.5 h-4.5" />
               Settings
             </button>
+
+            {onOpenHandover && (
+              <button 
+                onClick={() => {
+                  setShowProfile(false);
+                  onOpenHandover();
+                }}
+                className="w-full mt-2 bg-secondary/15 border border-secondary/25 text-secondary py-2.5 rounded-xl text-label-md font-bold flex items-center justify-center gap-2 hover:bg-secondary/20 transition-all cursor-pointer"
+              >
+                <ArrowLeftRight className="w-4.5 h-4.5" />
+                Handover Shift
+              </button>
+            )}
+
+            {currentUser?.id === 'master_super_admin' && onNavigate && (
+              <button 
+                onClick={() => {
+                  setShowProfile(false);
+                  onNavigate('masterAdmin');
+                }}
+                className="w-full mt-2 bg-primary/10 border border-primary/20 text-primary py-2.5 rounded-xl text-label-md font-bold flex items-center justify-center gap-2 hover:bg-primary/20 transition-all cursor-pointer"
+              >
+                <ShieldCheck className="w-4.5 h-4.5" />
+                Master Console
+              </button>
+            )}
 
             <button 
               onClick={() => setShowProfile(false)}
@@ -7713,7 +8040,7 @@ function WelcomeScreen({ onNavigate, onGoogleLogin }: { onNavigate: (page: Page)
   return (
     <div className="min-h-[100dvh] flex flex-col justify-center items-center px-container-padding-mobile relative overflow-hidden bg-surface-container-lowest">
       <div className="absolute top-0 left-0 w-full h-1/2 bg-surface-container-highest opacity-30 -z-10" />
-      <div className="w-full max-w-sm flex flex-col items-center mb-12">
+      <div className="w-full max-w-sm flex flex-col items-center mb-10">
         <div className="w-16 h-16 bg-primary rounded-full flex items-center justify-center mb-4 shadow-[0_4px_20px_rgba(0,0,0,0.1)]">
           <Store className="w-8 h-8 text-on-primary fill-current" />
         </div>
@@ -7723,21 +8050,28 @@ function WelcomeScreen({ onNavigate, onGoogleLogin }: { onNavigate: (page: Page)
 
       <div className="w-full max-w-sm flex flex-col gap-4">
         <button 
-          className="w-full bg-primary text-on-primary py-4 rounded-xl font-label-md text-[16px] hover:bg-primary/90 transition-colors shadow-sm cursor-pointer"
+          className="w-full bg-primary text-on-primary py-4 rounded-xl font-label-md text-[16px] hover:bg-primary/90 transition-colors shadow-sm cursor-pointer font-bold"
           onClick={() => onNavigate('login')}
         >
           Login
         </button>
         <button 
-          className="w-full bg-surface text-primary border border-outline-variant py-4 rounded-xl font-label-md text-[16px] hover:bg-surface-container-highest transition-colors shadow-sm cursor-pointer"
+          className="w-full bg-surface text-primary border border-outline-variant py-4 rounded-xl font-label-md text-[16px] hover:bg-surface-container-highest transition-colors shadow-sm cursor-pointer font-bold"
           onClick={() => onNavigate('registerFirm')}
         >
           Register Firm
         </button>
-      </div>
 
-      <div className="absolute bottom-6 w-full text-center">
-        <button className="text-label-md text-on-surface-variant hover:text-primary transition-colors cursor-pointer p-2 font-semibold" onClick={onGoogleLogin}>
+        <div className="relative flex py-2 items-center my-1">
+          <div className="flex-grow border-t border-outline-variant/50"></div>
+          <span className="flex-shrink mx-3 text-[10px] text-on-surface-variant font-black uppercase tracking-wider">System Administration</span>
+          <div className="flex-grow border-t border-outline-variant/50"></div>
+        </div>
+
+        <button 
+          className="w-full bg-surface-container-high hover:bg-surface-container-highest text-primary border border-outline-variant py-3.5 rounded-xl font-semibold text-[14px] flex items-center justify-center gap-2 transition-all shadow-sm cursor-pointer"
+          onClick={onGoogleLogin}
+        >
           🔐 Master Admin Secure Log-in
         </button>
       </div>
@@ -7920,6 +8254,22 @@ function LoginScreen({ onNavigate, onLogin, onGoogleLogin, firms }: { onNavigate
             Login to Firm App
           </button>
         </form>
+
+        <div className="mt-4 flex flex-col gap-3">
+          <div className="relative flex py-2 items-center">
+            <div className="flex-grow border-t border-outline-variant/50"></div>
+            <span className="flex-shrink mx-3 text-[10px] text-on-surface-variant font-black uppercase tracking-wider">System Administration</span>
+            <div className="flex-grow border-t border-outline-variant/50"></div>
+          </div>
+          
+          <button 
+            type="button"
+            onClick={onGoogleLogin}
+            className="w-full bg-surface-container-high hover:bg-surface-container-highest text-primary border border-outline-variant py-3.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all shadow-sm cursor-pointer"
+          >
+            🔐 Master Admin Secure Log-in
+          </button>
+        </div>
 
         <div className="mt-6 p-4 rounded-2xl bg-surface-container-low border border-dashed border-outline-variant text-left text-xs text-on-surface-variant space-y-1">
           <p className="font-bold text-on-surface mb-1">💡 Selected Firm Credentials:</p>
@@ -10284,3 +10634,291 @@ function AdminPasswordModal({
     </div>
   );
 }
+
+function HandoverModal({
+  isOpen,
+  onClose,
+  currentUser,
+  currentFirmId,
+  workingDate,
+  transactions,
+  activeFirm,
+  onConfirmHandover
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  currentUser: any;
+  currentFirmId: string;
+  workingDate: string;
+  transactions: Transaction[];
+  activeFirm?: Firm;
+  onConfirmHandover: (toUser: { id: string; name: string }, notes: string, cash: number, upi: number, txCount: number) => void;
+}) {
+  const [selectedUserId, setSelectedUserId] = useState('');
+  const [notes, setNotes] = useState('');
+  
+  // Calculate Shift statistics for the current user
+  const shiftTransactions = useMemo(() => {
+    if (!currentUser || !currentFirmId) return [];
+    return transactions.filter(t => 
+      t.firmId === currentFirmId && 
+      t.date === workingDate && 
+      t.recordedByUserId === currentUser.id
+    );
+  }, [transactions, currentUser, currentFirmId, workingDate]);
+
+  const { cashCollected, upiCollected } = useMemo(() => {
+    let cash = 0;
+    let upi = 0;
+    shiftTransactions.forEach(t => {
+      if (t.type === 'receive_payment') {
+        if ((t.extraDetails || '').toLowerCase().includes('cash')) {
+          cash += t.amount;
+        } else {
+          upi += t.amount;
+        }
+      } else if (t.type === 'supplier_payment' || t.type === 'staff_advance') {
+        const details = (t.extraDetails || '').toLowerCase();
+        const isCash = details.includes('cash') || (!details.includes('upi') && !details.includes('online') && !details.includes('bank') && !details.includes('card'));
+        if (isCash) {
+          cash -= t.amount;
+        } else {
+          upi -= t.amount;
+        }
+      }
+    });
+    return { cashCollected: Math.max(0, cash), upiCollected: Math.max(0, upi) };
+  }, [shiftTransactions]);
+
+  const [enteredCash, setEnteredCash] = useState(cashCollected);
+  const [enteredUpi, setEnteredUpi] = useState(upiCollected);
+
+  useEffect(() => {
+    setEnteredCash(cashCollected);
+    setEnteredUpi(upiCollected);
+  }, [cashCollected, upiCollected]);
+
+  if (!isOpen) return null;
+
+  // Filter out the current user from next duty person options
+  const otherUsers = (activeFirm?.users || []).filter(u => u.id !== currentUser?.id);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedUserId) {
+      alert("Please select the next duty person to handover the shift.");
+      return;
+    }
+    const targetUser = activeFirm?.users.find(u => u.id === selectedUserId);
+    if (!targetUser) return;
+
+    onConfirmHandover(
+      { id: targetUser.id, name: targetUser.name },
+      notes.trim(),
+      enteredCash,
+      enteredUpi,
+      shiftTransactions.length
+    );
+  };
+
+  return (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+      <div className="bg-surface-container-lowest border border-outline-variant rounded-2xl w-full max-w-md p-6 shadow-2xl relative text-left">
+        <button 
+          onClick={onClose}
+          className="absolute top-4 right-4 text-on-surface-variant hover:bg-surface-container-low p-1.5 rounded-full cursor-pointer transition-colors"
+        >
+          <X className="w-5 h-5" />
+        </button>
+
+        <div className="flex items-center gap-3 mb-5">
+          <div className="w-10 h-10 bg-secondary/15 text-secondary rounded-xl flex items-center justify-center">
+            <ArrowLeftRight className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="text-headline-mobile text-on-surface font-black">Handover Shift</h3>
+            <p className="text-xs text-on-surface-variant">Transfer shift duty and transactions cleanly</p>
+          </div>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-xs font-bold text-on-surface-variant mb-1.5 uppercase tracking-wider">Next Duty Person *</label>
+            {otherUsers.length > 0 ? (
+              <select
+                value={selectedUserId}
+                onChange={(e) => setSelectedUserId(e.target.value)}
+                className="w-full bg-surface-bright border border-outline-variant rounded-xl px-4 py-3 text-body-md text-on-background focus:border-secondary outline-none transition-colors font-bold"
+                required
+              >
+                <option value="">-- Select Next Shift Staff --</option>
+                {otherUsers.map(u => (
+                  <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
+                ))}
+              </select>
+            ) : (
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800">
+                No other registered counter staff found in this firm. Please ask the Admin to add users in the Admin Portal first.
+              </div>
+            )}
+          </div>
+
+          <div className="bg-surface-container-low p-4 rounded-xl border border-outline-variant/30 space-y-3">
+            <h4 className="text-xs font-black text-primary uppercase tracking-wider">Current Shift Summary (Auto-calculated)</h4>
+            
+            <div className="grid grid-cols-3 gap-2">
+              <div className="bg-surface-bright p-2.5 rounded-lg border border-outline-variant/20 text-center">
+                <span className="text-[10px] text-on-surface-variant block uppercase font-bold">Transactions</span>
+                <span className="text-sm font-black text-on-surface">{shiftTransactions.length}</span>
+              </div>
+              <div className="bg-surface-bright p-2.5 rounded-lg border border-outline-variant/20 text-center">
+                <span className="text-[10px] text-on-surface-variant block uppercase font-bold">Est. Cash</span>
+                <span className="text-sm font-black text-green-600">₹{cashCollected.toLocaleString()}</span>
+              </div>
+              <div className="bg-surface-bright p-2.5 rounded-lg border border-outline-variant/20 text-center">
+                <span className="text-[10px] text-on-surface-variant block uppercase font-bold">Est. UPI</span>
+                <span className="text-sm font-black text-teal-600">₹{upiCollected.toLocaleString()}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-bold text-on-surface-variant mb-1 uppercase tracking-wider">Handed Over Cash (₹)</label>
+              <input
+                type="number"
+                value={enteredCash}
+                onChange={(e) => setEnteredCash(parseFloat(e.target.value) || 0)}
+                className="w-full bg-surface-bright border border-outline-variant rounded-xl px-4 py-2.5 text-sm text-on-background focus:border-secondary outline-none transition-colors font-mono font-bold"
+                min="0"
+                step="any"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-on-surface-variant mb-1 uppercase tracking-wider">Handed Over UPI (₹)</label>
+              <input
+                type="number"
+                value={enteredUpi}
+                onChange={(e) => setEnteredUpi(parseFloat(e.target.value) || 0)}
+                className="w-full bg-surface-bright border border-outline-variant rounded-xl px-4 py-2.5 text-sm text-on-background focus:border-secondary outline-none transition-colors font-mono font-bold"
+                min="0"
+                step="any"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-on-surface-variant mb-1 uppercase tracking-wider">Duty Handover Notes</label>
+            <textarea
+              placeholder="e.g. Physical cash counted and matched perfectly. No pending issues."
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              className="w-full bg-surface-bright border border-outline-variant rounded-xl px-4 py-2.5 text-sm text-on-background focus:border-secondary outline-none transition-colors min-h-[70px] resize-none"
+            />
+          </div>
+
+          <div className="flex gap-3 justify-end pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2.5 text-xs font-bold text-on-surface-variant hover:bg-surface-container rounded-lg transition-colors cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={otherUsers.length === 0}
+              className="bg-primary hover:bg-primary-hover disabled:opacity-50 disabled:cursor-not-allowed text-on-primary px-5 py-2.5 text-xs font-black rounded-lg transition-all shadow-sm cursor-pointer uppercase tracking-wider flex items-center gap-1.5"
+            >
+              <Check className="w-4 h-4" />
+              <span>Confirm Handover & Exit</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function HandoverAcceptanceOverlay({
+  handover,
+  onAccept,
+  onLogout
+}: {
+  handover: Handover;
+  onAccept: () => void;
+  onLogout: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-background/95 backdrop-blur-md text-on-background overflow-y-auto">
+      <div className="bg-surface-container-lowest border border-outline-variant rounded-3xl w-full max-w-lg p-8 shadow-2xl relative text-left animate-fade-in my-8">
+        <div className="flex flex-col items-center text-center mb-6">
+          <div className="w-16 h-16 bg-primary/10 text-primary rounded-full flex items-center justify-center mb-4 border border-primary/20">
+            <ArrowLeftRight className="w-8 h-8" />
+          </div>
+          <h2 className="text-headline-mobile md:text-headline-md font-black text-on-surface leading-tight">Shift Duty Handover Pending</h2>
+          <p className="text-body-md text-on-surface-variant mt-1.5 font-medium text-sm">You must accept the shift handover to access your workspace.</p>
+        </div>
+
+        <div className="bg-surface-container-low rounded-2xl border border-outline-variant/40 p-5 space-y-4">
+          <div className="flex justify-between items-center pb-3 border-b border-outline-variant/30">
+            <span className="text-xs text-on-surface-variant uppercase font-bold tracking-wider">From Handover Staff</span>
+            <span className="text-sm font-black text-on-surface">{handover.fromUserName}</span>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4 py-2">
+            <div className="bg-surface-bright p-3 rounded-xl border border-outline-variant/20">
+              <span className="text-[10px] text-on-surface-variant block uppercase font-bold tracking-wider">Handed Cash</span>
+              <span className="text-lg font-black text-green-600 block mt-0.5">₹{handover.closingCashBalance.toLocaleString()}</span>
+            </div>
+            <div className="bg-surface-bright p-3 rounded-xl border border-outline-variant/20">
+              <span className="text-[10px] text-on-surface-variant block uppercase font-bold tracking-wider">Handed UPI/Online</span>
+              <span className="text-lg font-black text-teal-600 block mt-0.5">₹{handover.closingUpiBalance.toLocaleString()}</span>
+            </div>
+          </div>
+
+          <div className="space-y-2 text-xs text-on-surface-variant">
+            <div className="flex justify-between">
+              <span>Shift Working Date:</span>
+              <span className="font-semibold text-on-surface">{handover.handoverDate}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Handover Timestamp:</span>
+              <span className="font-semibold text-on-surface">{new Date(handover.handoverTime).toLocaleString('en-IN')}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Transactions Recorded:</span>
+              <span className="font-semibold text-on-surface">{handover.totalTransactionsCount}</span>
+            </div>
+          </div>
+
+          {handover.notes && (
+            <div className="bg-surface-bright p-3.5 rounded-xl border border-outline-variant/25 text-xs">
+              <span className="font-black text-on-surface block mb-1 uppercase tracking-wider text-[10px]">Staff Shift Notes:</span>
+              <p className="text-on-surface-variant italic leading-relaxed">"{handover.notes}"</p>
+            </div>
+          )}
+        </div>
+
+        <div className="flex flex-col sm:flex-row gap-3 mt-6">
+          <button
+            onClick={onLogout}
+            className="flex-1 px-5 py-3.5 bg-surface-container-high hover:bg-surface-container-highest text-on-surface text-sm font-bold rounded-xl transition-all cursor-pointer border border-outline-variant text-center flex items-center justify-center gap-1.5"
+          >
+            <LogOut className="w-4 h-4 text-error" />
+            <span>Switch User / Logout</span>
+          </button>
+          
+          <button
+            onClick={onAccept}
+            className="flex-1 px-5 py-3.5 bg-primary hover:bg-primary-hover text-on-primary text-sm font-black rounded-xl transition-all cursor-pointer shadow-md text-center flex items-center justify-center gap-1.5 uppercase tracking-wider"
+          >
+            <Check className="w-5 h-5" />
+            <span>Accept Handover & Enter</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+

@@ -300,3 +300,33 @@ export function dbSubscribeDailyRegisters(onUpdate: (registers: Record<string, a
     if (onError) onError(err);
   });
 }
+
+export async function dbSaveHandover(handover: any): Promise<void> {
+  const path = `handovers/${handover.id}`;
+  try {
+    await setDoc(doc(db, 'handovers', handover.id), handover);
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, path);
+  }
+}
+
+export function dbSubscribeHandovers(onUpdate: (handovers: any[]) => void, onError?: (err: Error) => void) {
+  const path = 'handovers';
+  return onSnapshot(collection(db, path), (snap) => {
+    const data = snap.docs.map(doc => doc.data());
+    onUpdate(data);
+  }, (err) => {
+    handleFirestoreError(err, OperationType.LIST, path);
+    if (onError) onError(err);
+  });
+}
+
+export async function dbSaveBackup(backupId: string, backupData: any): Promise<void> {
+  const path = `backups/${backupId}`;
+  try {
+    await setDoc(doc(db, 'backups', backupId), backupData);
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, path);
+  }
+}
+

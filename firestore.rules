@@ -40,5 +40,15 @@ service cloud.firestore {
     match /firmDailyRegisters/{registerId} {
       allow read, write: if true;
     }
+
+    // Rules for Handovers
+    match /handovers/{handoverId} {
+      allow read, write: if true;
+    }
+
+    // Rules for Backups
+    match /backups/{backupId} {
+      allow read, write: if true;
+    }
   }
 }

@@ -180,7 +180,21 @@ export const SEEDED_DEFAULT_FIRM: Firm = {
 export const INITIAL_FIRMS: Firm[] = [SEEDED_DEFAULT_FIRM];
 
 export default function App() {
-  const [currentPage, setCurrentPage] = useState<Page>('welcome');
+  const [currentPage, setCurrentPage] = useState<Page>(() => {
+    const savedUser = localStorage.getItem('shopbooks_current_user');
+    if (savedUser) {
+      try {
+        const u = JSON.parse(savedUser);
+        if (u) {
+          if (u.id === 'master_super_admin' || u.role === 'Master Admin') {
+            return 'masterAdmin';
+          }
+          return 'dashboard';
+        }
+      } catch (e) {}
+    }
+    return 'welcome';
+  });
   const [isPosSettingsOpen, setIsPosSettingsOpen] = useState(false);
   const [printPreset, setPrintPreset] = useState<'thermal' | 'regular'>(() => {
     return (localStorage.getItem('shopbooks_print_preset') as 'thermal' | 'regular') || 'thermal';
@@ -1059,6 +1073,7 @@ export default function App() {
   const handleLogout = () => {
     triggerSignOut();
     setUserRole('user');
+    setCurrentUser(null);
     setCurrentPage('welcome');
   };
 
@@ -1423,6 +1438,7 @@ export default function App() {
           customers={customers}
           currentFirmId={currentFirmId}
           firms={firms}
+          currentUser={currentUser}
           initialFilter={txHistoryFilter}
           initialSearch={txHistorySearchQuery}
           openingCash={openingCash}
@@ -1439,6 +1455,16 @@ export default function App() {
           onDeleteTransaction={(id) => {
             const tx = transactions.find(t => t.id === id);
             if (!tx) return;
+
+            // Check if current user is allowed to delete this transaction
+            const isMasterAdmin = currentUser?.id === 'master_super_admin' || currentUser?.role === 'Master Admin';
+            const isAdmin = userRole === 'firmAdmin' || isMasterAdmin;
+            const isOwner = currentUser && tx.recordedByUserId === currentUser.id;
+
+            if (!isAdmin && !isOwner) {
+              alert(`Permission Denied: You can only delete entries recorded by yourself. This entry was recorded by ${tx.recordedByUserName || 'another user'}.`);
+              return;
+            }
 
             const txDate = tx.date;
             const isTxDateClosed = !!firmDailyRegisters[`${currentFirmId}_${txDate}`]?.closed;
@@ -3365,7 +3391,8 @@ function BentoGrid({
   // Cumulative Receivables (All-time Outstanding)
   const totalPatientOutstanding = customers.reduce((sum, c) => sum + (c.pendingBalance || 0), 0);
   const totalStaffCreditOutstanding = allTransactions.filter(t => t.type === 'staff_credit').reduce((sum, t) => sum + t.amount, 0);
-  const cumulativeReceivables = totalPatientOutstanding + totalStaffCreditOutstanding;
+  const totalSchemeBillsOutstanding = allTransactions.filter(t => t.type === 'scheme_bill').reduce((sum, t) => sum + t.amount, 0);
+  const cumulativeReceivables = totalPatientOutstanding + totalStaffCreditOutstanding + totalSchemeBillsOutstanding;
 
   return (
     <>
@@ -3385,11 +3412,11 @@ function BentoGrid({
             <h3 className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider">Total Receivables</h3>
             <span className="text-3xl md:text-4xl font-extrabold text-primary mt-1 block">₹{cumulativeReceivables.toLocaleString()}</span>
             <p className="text-on-surface-variant text-xs mt-2 leading-relaxed max-w-xl">
-              Overall outstanding payments awaiting recovery. Represents the sum of current patient dues and staff store credits. Click to view outstanding patient records.
+              Overall outstanding payments awaiting recovery. Represents the sum of current patient dues, staff store credits, and insurance/scheme bills. Click to view outstanding patient records.
             </p>
           </div>
           
-          <div className="grid grid-cols-2 gap-4 w-full md:w-auto min-w-[280px]">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full md:w-auto min-w-[280px] lg:min-w-[480px]">
             <div className="bg-surface-container-lowest border border-outline-variant/30 rounded-lg p-3 hover:border-error/30 transition-all flex flex-col justify-between">
               <div>
                 <div className="text-[10px] font-bold text-on-surface-variant/80 uppercase tracking-wider mb-1">Patient Dues</div>
@@ -3403,6 +3430,13 @@ function BentoGrid({
                 <div className="text-lg font-bold text-amber-600">₹{totalStaffCreditOutstanding.toLocaleString()}</div>
               </div>
               <div className="text-[10px] text-on-surface-variant/70 mt-1.5">Store credit ledger</div>
+            </div>
+            <div className="bg-surface-container-lowest border border-outline-variant/30 rounded-lg p-3 hover:border-blue-600/30 transition-all flex flex-col justify-between">
+              <div>
+                <div className="text-[10px] font-bold text-on-surface-variant/80 uppercase tracking-wider mb-1">Scheme Bills</div>
+                <div className="text-lg font-bold text-blue-600">₹{totalSchemeBillsOutstanding.toLocaleString()}</div>
+              </div>
+              <div className="text-[10px] text-on-surface-variant/70 mt-1.5">Awaiting scheme recovery</div>
             </div>
           </div>
         </div>
@@ -3426,6 +3460,12 @@ function BentoGrid({
           className="border border-error-container hover:border-error/40" 
           amountColor="text-error" 
           onClick={() => onNavigateToTxHistory('credit_sale', '')}
+        />
+        <MetricCard 
+          title="Scheme Bills (Today)" 
+          amount={`₹${dynamicSchemeReceivables.toLocaleString()}`} 
+          amountColor="text-blue-600" 
+          onClick={() => onNavigateToTxHistory('scheme_bill', '')}
         />
         <MetricCard 
           title="Expenses (Store/Suppliers)" 
@@ -3786,8 +3826,11 @@ function ReceivePaymentScreen({
   const [focusedInput, setFocusedInput] = useState(false);
 
   const activeCustomers = customers.filter(c => c.firmId === currentFirmId);
-  const autocompleteSuggestions = customerName.trim() && !selectedCustomerId
-    ? activeCustomers.filter(c => c.name.toLowerCase().includes(customerName.toLowerCase()))
+  const outstandingPatients = activeCustomers.filter(c => (c.pendingBalance || 0) > 0);
+  const autocompleteSuggestions = !selectedCustomerId
+    ? (customerName.trim()
+        ? activeCustomers.filter(c => c.name.toLowerCase().includes(customerName.toLowerCase()))
+        : outstandingPatients)
     : [];
   
   useEffect(() => {
@@ -3866,6 +3909,36 @@ function ReceivePaymentScreen({
                 </span>
               ) : null}
             </div>
+
+            {!selectedCustomerId && outstandingPatients.length > 0 && !customerName.trim() && (
+              <div className="mb-1">
+                <span className="text-[10px] font-bold text-on-surface-variant/85 uppercase tracking-wider block mb-1">
+                  Tap to Select Outstanding Patients
+                </span>
+                <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-none" style={{ WebkitOverflowScrolling: 'touch' }}>
+                  {outstandingPatients.map(cust => (
+                    <button
+                      key={cust.id}
+                      type="button"
+                      onClick={() => {
+                        setCustomerName(cust.name);
+                        setCustomerPhone(cust.phone);
+                        setShowAutoPrefilledBadge(true);
+                        setAmount(String(cust.pendingBalance));
+                      }}
+                      className="px-3 py-1.5 bg-green-50 hover:bg-green-100 border border-green-200 rounded-full text-xs text-green-800 font-bold flex items-center gap-1.5 whitespace-nowrap active:scale-95 transition-all cursor-pointer shrink-0"
+                    >
+                      <User className="w-3 h-3 text-green-600" />
+                      <span>{cust.name}</span>
+                      <span className="bg-green-600 text-white text-[9px] px-1.5 py-0.2 rounded-full font-black">
+                        ₹{cust.pendingBalance}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="relative">
               <User className="absolute left-3 top-1/2 -translate-y-1/2 text-outline w-5 h-5" />
               <input 
@@ -3885,7 +3958,9 @@ function ReceivePaymentScreen({
             </div>
             {focusedInput && autocompleteSuggestions.length > 0 && (
               <div className="absolute top-[100%] left-0 w-full bg-white border border-outline-variant rounded-b-xl shadow-lg z-50 divide-y divide-outline-variant/30 max-h-48 overflow-y-auto">
-                <div className="p-2 text-[10px] bg-surface-container font-bold text-on-surface-variant uppercase tracking-wider font-sans">Auto-Link Registered Customer</div>
+                <div className="p-2 text-[10px] bg-surface-container font-bold text-on-surface-variant uppercase tracking-wider font-sans">
+                  {customerName.trim() ? 'Matching Registered Customers' : 'Patients with Outstanding Credit'}
+                </div>
                 {autocompleteSuggestions.map(cust => (
                   <button
                     key={cust.id}
@@ -7152,6 +7227,7 @@ function TransactionHistoryScreen({
   customers, 
   currentFirmId,
   firms,
+  currentUser,
   initialFilter = 'all',
   initialSearch = '',
   openingCash,
@@ -7172,6 +7248,7 @@ function TransactionHistoryScreen({
   customers: Customer[], 
   currentFirmId: string,
   firms: Firm[],
+  currentUser?: { id: string; name: string; role: string; mobile: string } | null,
   initialFilter?: string,
   initialSearch?: string,
   openingCash: number,
@@ -7221,6 +7298,17 @@ function TransactionHistoryScreen({
 
   const handleSaveEditTx = () => {
     if (!selectedTx) return;
+
+    // Check if current user is allowed to edit this transaction
+    const isMasterAdmin = currentUser?.id === 'master_super_admin' || currentUser?.role === 'Master Admin';
+    const isAdmin = userRole === 'firmAdmin' || isMasterAdmin;
+    const isOwner = currentUser && selectedTx.recordedByUserId === currentUser.id;
+
+    if (!isAdmin && !isOwner) {
+      alert(`Permission Denied: You can only edit entries recorded by yourself. This entry was recorded by ${selectedTx.recordedByUserName || 'another user'}.`);
+      return;
+    }
+
     const isTxDateClosed = !!firmDailyRegisters[`${currentFirmId}_${selectedTx.date}`]?.closed;
 
     const performEdit = () => {
@@ -7839,39 +7927,58 @@ function TransactionHistoryScreen({
                       <span className="text-[10px] text-on-surface-variant/70 mt-1.5 block leading-tight">Registers live balance will refresh immediately.</span>
                     </div>
                   </div>
-                ) : (
-                  <div className="flex flex-col gap-2">
-                    <button 
-                      onClick={() => setIsEditingTx(true)}
-                      className="w-full h-10 rounded-lg bg-teal-600 hover:bg-teal-700 text-white flex items-center justify-center gap-1.5 text-xs font-bold transition-all shadow-sm cursor-pointer"
-                    >
-                      <Edit className="w-3.5 h-3.5" />
-                      Edit Ledger Entry
-                    </button>
+                ) : (() => {
+                  const isMasterAdmin = currentUser?.id === 'master_super_admin' || currentUser?.role === 'Master Admin';
+                  const isAdmin = userRole === 'firmAdmin' || isMasterAdmin;
+                  const canModifySelected = isAdmin || (currentUser && selectedTx.recordedByUserId === currentUser.id);
 
-                    <div className="flex gap-2">
-                      <button 
-                        onClick={() => {
-                          alert(`Transaction ${selectedTx.id} receipt loaded. Print ready.`);
-                        }}
-                        className="flex-1 h-9 rounded-lg border border-outline-variant flex items-center justify-center gap-1.5 text-xs font-bold text-on-background hover:bg-surface-container-low transition-colors cursor-pointer"
-                      >
-                        <Printer className="w-3.5 h-3.5" />
-                        Receipt
-                      </button>
-                      <button 
-                        onClick={() => {
-                          onDeleteTransaction(selectedTx.id);
-                          setSelectedTx(null);
-                        }}
-                        className="flex-1 h-9 rounded-lg bg-error/10 hover:bg-error/20 border border-error/20 flex items-center justify-center gap-1.5 text-xs font-bold text-error transition-colors cursor-pointer"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                        Strike Log
-                      </button>
+                  return (
+                    <div className="flex flex-col gap-2">
+                      {!canModifySelected && (
+                        <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded-xl p-3 text-xs mb-1">
+                          <p className="font-bold">⚠️ Entry Locked (Read-Only)</p>
+                          <p className="text-[11px] mt-0.5 text-amber-800 leading-normal">
+                            This transaction was recorded by <strong>{selectedTx.recordedByUserName || 'another user'}</strong>. You can only edit or strike entries recorded by yourself.
+                          </p>
+                        </div>
+                      )}
+
+                      {canModifySelected && (
+                        <button 
+                          onClick={() => setIsEditingTx(true)}
+                          className="w-full h-10 rounded-lg bg-teal-600 hover:bg-teal-700 text-white flex items-center justify-center gap-1.5 text-xs font-bold transition-all shadow-sm cursor-pointer"
+                        >
+                          <Edit className="w-3.5 h-3.5" />
+                          Edit Ledger Entry
+                        </button>
+                      )}
+
+                      <div className="flex gap-2">
+                        <button 
+                          onClick={() => {
+                            alert(`Transaction ${selectedTx.id} receipt loaded. Print ready.`);
+                          }}
+                          className={`h-9 rounded-lg border border-outline-variant flex items-center justify-center gap-1.5 text-xs font-bold text-on-background hover:bg-surface-container-low transition-colors cursor-pointer ${canModifySelected ? 'flex-1' : 'w-full'}`}
+                        >
+                          <Printer className="w-3.5 h-3.5" />
+                          Receipt
+                        </button>
+                        {canModifySelected && (
+                          <button 
+                            onClick={() => {
+                              onDeleteTransaction(selectedTx.id);
+                              setSelectedTx(null);
+                            }}
+                            className="flex-1 h-9 rounded-lg bg-error/10 hover:bg-error/20 border border-error/20 flex items-center justify-center gap-1.5 text-xs font-bold text-error transition-colors cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            Strike Log
+                          </button>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
               </>
             )}
           </div>
@@ -8118,16 +8225,24 @@ function WelcomeScreen({ onNavigate, onGoogleLogin }: { onNavigate: (page: Page)
 }
 
 function LoginScreen({ onNavigate, onLogin, onGoogleLogin, firms }: { onNavigate: (page: Page) => void, onLogin: (firmId: string, role: 'user' | 'firmAdmin', userId: string, userName: string, userMobile: string, loginWorkingDate?: string) => void, onGoogleLogin: () => void, firms: Firm[] }) {
-  const [role, setRole] = useState<'user' | 'firmAdmin'>('user');
-  const [selectedFirmId, setSelectedFirmId] = useState(() => firms[0]?.id || '');
-  const [userId, setUserId] = useState('');
+  const [role, setRole] = useState<'user' | 'firmAdmin'>(() => {
+    return (localStorage.getItem('shopbooks_remember_role') as 'user' | 'firmAdmin') || 'user';
+  });
+  const [selectedFirmId, setSelectedFirmId] = useState(() => {
+    return localStorage.getItem('shopbooks_remember_firmid') || (firms[0]?.id || '');
+  });
+  const [userId, setUserId] = useState(() => {
+    return localStorage.getItem('shopbooks_remember_userid') || '';
+  });
 
   useEffect(() => {
     if (!selectedFirmId && firms.length > 0) {
       setSelectedFirmId(firms[0].id);
     }
   }, [firms, selectedFirmId]);
-  const [password, setPassword] = useState('');
+  const [password, setPassword] = useState(() => {
+    return localStorage.getItem('shopbooks_remember_password') || '';
+  });
   const [loginWorkingDate, setLoginWorkingDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [errorMsg, setErrorMsg] = useState('');
 
@@ -8151,6 +8266,10 @@ function LoginScreen({ onNavigate, onLogin, onGoogleLogin, firms }: { onNavigate
     const isMasterPwd = password === 'yograje1987';
     if (isMasterEmail && isMasterPwd) {
       setErrorMsg('');
+      localStorage.setItem('shopbooks_remember_userid', userId);
+      localStorage.setItem('shopbooks_remember_password', password);
+      localStorage.setItem('shopbooks_remember_role', role);
+      localStorage.setItem('shopbooks_remember_firmid', selectedFirmId);
       onLogin('F-1001', 'firmAdmin', 'yogwalture@gmail.com', 'Master Super Admin (Yograj)', '9876543210', loginWorkingDate);
       return;
     }
@@ -8171,6 +8290,10 @@ function LoginScreen({ onNavigate, onLogin, onGoogleLogin, firms }: { onNavigate
       const isCorrectPwd = password === (firm.password || 'password');
       if (isCorrectEmail && isCorrectPwd) {
         setErrorMsg('');
+        localStorage.setItem('shopbooks_remember_userid', userId);
+        localStorage.setItem('shopbooks_remember_password', password);
+        localStorage.setItem('shopbooks_remember_role', role);
+        localStorage.setItem('shopbooks_remember_firmid', selectedFirmId);
         onLogin(firm.id, 'firmAdmin', userId.trim(), firm.adminName, firm.mobile, loginWorkingDate);
       } else {
         setErrorMsg('Invalid Admin Email or Password. Try "yogwalture@gmail.com" / "yograje1987".');
@@ -8188,6 +8311,10 @@ function LoginScreen({ onNavigate, onLogin, onGoogleLogin, firms }: { onNavigate
         return;
       }
       setErrorMsg('');
+      localStorage.setItem('shopbooks_remember_userid', userId);
+      localStorage.setItem('shopbooks_remember_password', password);
+      localStorage.setItem('shopbooks_remember_role', role);
+      localStorage.setItem('shopbooks_remember_firmid', selectedFirmId);
       onLogin(firm.id, 'user', matchedUser.id, matchedUser.name, matchedUser.mobile, loginWorkingDate);
     }
   };

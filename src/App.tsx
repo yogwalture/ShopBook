@@ -8035,6 +8035,7 @@ function SchemeCreditSaleScreen({
                 <option value="esic">ESIC</option>
                 <option value="cm">CM Fund</option>
                 <option value="private">Private Insurance</option>
+                <option value="package">Package</option>
                 <option value="police">Police Plan</option>
               </select>
             </div>

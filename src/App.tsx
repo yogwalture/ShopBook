@@ -56,6 +56,7 @@ import {
   Upload,
   ShieldCheck,
   ShieldAlert,
+  RefreshCw,
 } from 'lucide-react';
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { CalendarDatePicker } from './components/CalendarDatePicker';
@@ -84,6 +85,9 @@ import {
   dbSaveHandover,
   dbSubscribeHandovers,
   dbSaveBackup,
+  dbSaveDeletedTransaction,
+  dbDeleteDeletedTransaction,
+  dbSubscribeDeletedTransactions,
 } from './firebase';
 import {
   ResponsiveContainer,
@@ -134,6 +138,8 @@ export type Transaction = {
   recordedByUserId: string;
   recordedByUserName: string;
   extraDetails?: string;
+  isRecurring?: boolean;
+  recurrenceInterval?: 'daily' | 'weekly' | 'monthly' | 'none';
 };
 
 export type Customer = {
@@ -357,6 +363,35 @@ export default function App() {
     localStorage.setItem('shopbooks_transactions', JSON.stringify(transactions));
   }, [transactions]);
 
+  const [deletedTransactions, setDeletedTransactionsState] = useState<Transaction[]>(() => {
+    const saved = localStorage.getItem('shopbooks_deleted_transactions');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  const setDeletedTransactions = useCallback((nextVal: Transaction[] | ((prev: Transaction[]) => Transaction[])) => {
+    setDeletedTransactionsState(prev => {
+      const next = typeof nextVal === 'function' ? nextVal(prev) : nextVal;
+      const prevIds = new Set(prev.map(t => t.id));
+      const nextIds = new Set(next.map(t => t.id));
+      next.forEach(t => {
+        const oldT = prev.find(p => p.id === t.id);
+        if (!oldT || JSON.stringify(oldT) !== JSON.stringify(t)) {
+          dbSaveDeletedTransaction(t);
+        }
+      });
+      prev.forEach(t => {
+        if (!nextIds.has(t.id)) {
+          dbDeleteDeletedTransaction(t.id);
+        }
+      });
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('shopbooks_deleted_transactions', JSON.stringify(deletedTransactions));
+  }, [deletedTransactions]);
+
   const [handovers, setHandoversState] = useState<Handover[]>(() => {
     const saved = localStorage.getItem('shopbooks_handovers');
     return saved ? JSON.parse(saved) : [];
@@ -559,18 +594,21 @@ export default function App() {
 
   const [firmsLoaded, setFirmsLoaded] = useState(false);
   const [txLoaded, setTxLoaded] = useState(false);
+  const [deletedTxLoaded, setDeletedTxLoaded] = useState(false);
   const [custLoaded, setCustLoaded] = useState(false);
   const [regLoaded, setRegLoaded] = useState(false);
   const [handoversLoaded, setHandoversLoaded] = useState(false);
 
   const firmsRef = React.useRef(firms);
   const transactionsRef = React.useRef(transactions);
+  const deletedTransactionsRef = React.useRef(deletedTransactions);
   const customersRef = React.useRef(customers);
   const firmDailyRegistersRef = React.useRef(firmDailyRegisters);
   const handoversRef = React.useRef(handovers);
 
   useEffect(() => { firmsRef.current = firms; }, [firms]);
   useEffect(() => { transactionsRef.current = transactions; }, [transactions]);
+  useEffect(() => { deletedTransactionsRef.current = deletedTransactions; }, [deletedTransactions]);
   useEffect(() => { customersRef.current = customers; }, [customers]);
   useEffect(() => { firmDailyRegistersRef.current = firmDailyRegisters; }, [firmDailyRegisters]);
   useEffect(() => { handoversRef.current = handovers; }, [handovers]);
@@ -578,10 +616,10 @@ export default function App() {
   const [isFirebaseLoading, setIsFirebaseLoading] = useState(true);
 
   useEffect(() => {
-    if (firmsLoaded && txLoaded && custLoaded && regLoaded && handoversLoaded) {
+    if (firmsLoaded && txLoaded && deletedTxLoaded && custLoaded && regLoaded && handoversLoaded) {
       setIsFirebaseLoading(false);
     }
-  }, [firmsLoaded, txLoaded, custLoaded, regLoaded, handoversLoaded]);
+  }, [firmsLoaded, txLoaded, deletedTxLoaded, custLoaded, regLoaded, handoversLoaded]);
 
   // Daily Auto-Backup hook
   useEffect(() => {
@@ -759,10 +797,26 @@ export default function App() {
       setHandoversLoaded(true);
     });
 
+    const unsubDeletedTransactions = dbSubscribeDeletedTransactions((deletedTxList) => {
+      const cloudDelTxMap = new Map(deletedTxList.map(t => [t.id, t]));
+      const mergedDelTx = [...deletedTxList];
+      for (const t of deletedTransactionsRef.current) {
+        if (!cloudDelTxMap.has(t.id)) {
+          dbSaveDeletedTransaction(t);
+          mergedDelTx.push(t);
+        }
+      }
+      setDeletedTransactionsState(mergedDelTx);
+      setDeletedTxLoaded(true);
+    }, (err) => {
+      setDeletedTxLoaded(true);
+    });
+
     return () => {
       unsubAuth();
       unsubFirms();
       unsubTransactions();
+      unsubDeletedTransactions();
       unsubCustomers();
       unsubRegisters();
       unsubHandovers();
@@ -1452,6 +1506,8 @@ export default function App() {
           userRole={userRole}
           setTransactions={setTransactions}
           setCustomers={setCustomers}
+          deletedTransactions={deletedTransactions}
+          setDeletedTransactions={setDeletedTransactions}
           onDeleteTransaction={(id) => {
             const tx = transactions.find(t => t.id === id);
             if (!tx) return;
@@ -1486,6 +1542,13 @@ export default function App() {
                     return c;
                   }));
                 }
+                const deletedTxRecord = {
+                  ...tx,
+                  deletedAt: new Date().toISOString(),
+                  deletedByUserId: currentUser?.id || 'admin',
+                  deletedByUserName: currentUser?.name || 'Admin'
+                };
+                setDeletedTransactions(prev => [deletedTxRecord, ...prev]);
                 setTransactions(prev => prev.filter(t => t.id !== id));
               }
             };
@@ -7241,7 +7304,9 @@ function TransactionHistoryScreen({
   workingDate,
   userRole,
   setTransactions,
-  setCustomers
+  setCustomers,
+  deletedTransactions = [],
+  setDeletedTransactions
 }: { 
   onBack: () => void, 
   transactions: Transaction[], 
@@ -7262,7 +7327,9 @@ function TransactionHistoryScreen({
   workingDate?: string,
   userRole?: 'user' | 'firmAdmin',
   setTransactions?: React.Dispatch<React.SetStateAction<Transaction[]>>,
-  setCustomers?: React.Dispatch<React.SetStateAction<Customer[]>>
+  setCustomers?: React.Dispatch<React.SetStateAction<Customer[]>>,
+  deletedTransactions?: Transaction[],
+  setDeletedTransactions?: React.Dispatch<React.SetStateAction<Transaction[]>>
 }) {
   const activeFirm = firms.find(f => f.id === currentFirmId);
   const activeTransactions = transactions.filter(t => t.firmId === currentFirmId);
@@ -7400,47 +7467,52 @@ function TransactionHistoryScreen({
   }, [activeTransactions, activeCustomers]);
 
   const filteredTransactions = useMemo(() => {
-    let list = [...activeTransactions];
+    let list: any[] = [];
+    if (selectedType === 'deleted_log') {
+      list = deletedTransactions.filter(t => t.firmId === currentFirmId);
+    } else {
+      list = [...activeTransactions];
 
-    // Grab ALL registered daily counter financials across all dates for the firm
-    Object.entries(firmDailyRegisters).forEach(([key, reg]) => {
-      // Key format: `${firmId}_${date}`
-      if (key.startsWith(`${currentFirmId}_`)) {
-        const datePart = key.substring(currentFirmId.length + 1);
-        if (reg.cashSales > 0) {
-          list.push({
-            id: `LGR-COUNTER-CASH-${datePart}`,
-            firmId: currentFirmId,
-            type: 'counter_cash' as any,
-            title: `Consolidated Counter Cash Sales (${datePart})`,
-            patientName: 'General Cash Walk-ins',
-            customerPhone: '',
-            amount: reg.cashSales,
-            date: datePart,
-            time: '23:59',
-            recordedByUserId: 'system',
-            recordedByUserName: 'Drawer Register',
-            extraDetails: 'Cash Register'
-          });
+      // Grab ALL registered daily counter financials across all dates for the firm
+      Object.entries(firmDailyRegisters).forEach(([key, reg]) => {
+        // Key format: `${firmId}_${date}`
+        if (key.startsWith(`${currentFirmId}_`)) {
+          const datePart = key.substring(currentFirmId.length + 1);
+          if (reg.cashSales > 0) {
+            list.push({
+              id: `LGR-COUNTER-CASH-${datePart}`,
+              firmId: currentFirmId,
+              type: 'counter_cash' as any,
+              title: `Consolidated Counter Cash Sales (${datePart})`,
+              patientName: 'General Cash Walk-ins',
+              customerPhone: '',
+              amount: reg.cashSales,
+              date: datePart,
+              time: '23:59',
+              recordedByUserId: 'system',
+              recordedByUserName: 'Drawer Register',
+              extraDetails: 'Cash Register'
+            });
+          }
+          if (reg.onlineSales > 0) {
+            list.push({
+              id: `LGR-COUNTER-ONLINE-${datePart}`,
+              firmId: currentFirmId,
+              type: 'counter_online' as any,
+              title: `Consolidated Counter Online Sales (${datePart})`,
+              patientName: 'General Online Walk-ins',
+              customerPhone: '',
+              amount: reg.onlineSales,
+              date: datePart,
+              time: '23:58',
+              recordedByUserId: 'system',
+              recordedByUserName: 'UPI Gateway',
+              extraDetails: 'UPI / Online'
+            });
+          }
         }
-        if (reg.onlineSales > 0) {
-          list.push({
-            id: `LGR-COUNTER-ONLINE-${datePart}`,
-            firmId: currentFirmId,
-            type: 'counter_online' as any,
-            title: `Consolidated Counter Online Sales (${datePart})`,
-            patientName: 'General Online Walk-ins',
-            customerPhone: '',
-            amount: reg.onlineSales,
-            date: datePart,
-            time: '23:58',
-            recordedByUserId: 'system',
-            recordedByUserName: 'UPI Gateway',
-            extraDetails: 'UPI / Online'
-          });
-        }
-      }
-    });
+      });
+    }
 
     // Sort newest first
     list.sort((a, b) => {
@@ -7460,7 +7532,7 @@ function TransactionHistoryScreen({
       );
     }
 
-    if (selectedType !== 'all') {
+    if (selectedType !== 'all' && selectedType !== 'deleted_log') {
       list = list.filter(t => t.type === selectedType);
     }
 
@@ -7469,7 +7541,7 @@ function TransactionHistoryScreen({
     }
 
     return list;
-  }, [activeTransactions, searchQuery, selectedType, selectedDate, counterCashSales, counterOnlineSales, currentFirmId, firmDailyRegisters]);
+  }, [activeTransactions, deletedTransactions, searchQuery, selectedType, selectedDate, counterCashSales, counterOnlineSales, currentFirmId, firmDailyRegisters]);
 
   const exportToCSV = () => {
     const headers = ["ID", "Date", "Time", "Type", "Patient/Customer/Party", "Details", "Amount (INR)", "Recorded By"];
@@ -7569,32 +7641,40 @@ function TransactionHistoryScreen({
           </div>
 
           <div className="flex flex-wrap gap-1.5 pt-1 border-t border-outline-variant/20">
-            {[
-              { id: 'all', label: 'All Logs' },
-              { id: 'counter_cash', label: 'Counter Cash' },
-              { id: 'counter_online', label: 'Counter Online' },
-              { id: 'credit_sale', label: 'Credit Sales' },
-              { id: 'receive_payment', label: 'Payments Recv' },
-              { id: 'supplier_payment', label: 'Supplier Paid' },
-              { id: 'scheme_bill', label: 'Scheme Bills' },
-              { id: 'staff_credit', label: 'Staff Credits' },
-              { id: 'staff_advance', label: 'Staff Advances' }
-            ].map(pill => {
-              const active = selectedType === pill.id;
-              return (
-                <button
-                  key={pill.id}
-                  onClick={() => setSelectedType(pill.id)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                    active 
-                      ? 'bg-primary text-on-primary shadow-sm' 
-                      : 'bg-surface-container/60 text-on-surface-variant hover:bg-surface-container hover:text-on-surface'
-                  }`}
-                >
-                  {pill.label}
-                </button>
-              );
-            })}
+            {(() => {
+              const isMasterAdmin = currentUser?.id === 'master_super_admin' || currentUser?.role === 'Master Admin';
+              const isAdmin = userRole === 'firmAdmin' || isMasterAdmin;
+              const pills = [
+                { id: 'all', label: 'All Logs' },
+                { id: 'counter_cash', label: 'Counter Cash' },
+                { id: 'counter_online', label: 'Counter Online' },
+                { id: 'credit_sale', label: 'Credit Sales' },
+                { id: 'receive_payment', label: 'Payments Recv' },
+                { id: 'supplier_payment', label: 'Supplier Paid' },
+                { id: 'scheme_bill', label: 'Scheme Bills' },
+                { id: 'staff_credit', label: 'Staff Credits' },
+                { id: 'staff_advance', label: 'Staff Advances' }
+              ];
+              if (isAdmin) {
+                pills.push({ id: 'deleted_log', label: '❌ Deleted Log' });
+              }
+              return pills.map(pill => {
+                const active = selectedType === pill.id;
+                return (
+                  <button
+                    key={pill.id}
+                    onClick={() => setSelectedType(pill.id)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                      active 
+                        ? 'bg-primary text-on-primary shadow-sm' 
+                        : 'bg-surface-container/60 text-on-surface-variant hover:bg-surface-container hover:text-on-surface'
+                    }`}
+                  >
+                    {pill.label}
+                  </button>
+                );
+              });
+            })()}
           </div>
         </section>
 
@@ -7706,6 +7786,11 @@ function TransactionHistoryScreen({
                     <div>
                       <div className="flex flex-wrap items-center gap-1.5">
                         <span className="text-sm font-semibold text-on-surface">{typeLabel}</span>
+                        {t.isRecurring && (
+                          <span className="text-[9px] font-mono tracking-wider font-extrabold bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 px-1.5 py-0.5 rounded uppercase flex items-center gap-0.5">
+                            <span>🔁 Recurring</span>
+                          </span>
+                        )}
                         {badges.map((b, bIdx) => (
                           <span key={bIdx} className="text-[10px] font-mono tracking-wider font-bold bg-surface-container px-2 py-0.5 rounded text-on-surface-variant uppercase">
                             {b}
@@ -7796,6 +7881,22 @@ function TransactionHistoryScreen({
                       onChange={(e) => setEditDate(e.target.value)}
                       className="w-full bg-surface-container-low text-on-surface text-xs font-mono p-2.5 rounded-lg border border-outline-variant focus:border-primary outline-none"
                     />
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] text-on-surface-variant block uppercase tracking-wider font-extrabold mb-1">Entry Type (Interchange Category)</label>
+                    <select 
+                      value={editType}
+                      onChange={(e) => setEditType(e.target.value as Transaction['type'])}
+                      className="w-full bg-surface-container-low text-on-surface text-xs font-semibold p-2.5 rounded-lg border border-outline-variant focus:border-primary outline-none cursor-pointer"
+                    >
+                      <option value="credit_sale">Credit Sale (Patient Dues)</option>
+                      <option value="receive_payment">Cash Collection / Receive Payment</option>
+                      <option value="scheme_bill">Scheme Bill (Government/Insurance Schemes)</option>
+                      <option value="staff_credit">Staff Credit</option>
+                      <option value="staff_advance">Staff Advance</option>
+                      <option value="supplier_payment">Supplier Payment</option>
+                    </select>
                   </div>
 
                   {selectedTx.patientName && (
@@ -7895,7 +7996,65 @@ function TransactionHistoryScreen({
                 </div>
 
                 {/* Adjust counter sales vs standard delete */}
-                {selectedTx.id.startsWith('LGR-COUNTER-') ? (
+                {selectedType === 'deleted_log' ? (
+                  <div className="space-y-4">
+                    <div className="bg-error/5 border border-error/20 text-on-surface rounded-xl p-4 space-y-2">
+                      <p className="text-xs font-bold text-error flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 bg-error rounded-full animate-pulse"></span>
+                        <span>Archived Strike Log Record</span>
+                      </p>
+                      <div className="text-[11px] space-y-1 text-on-surface-variant font-semibold">
+                        <p><strong>Deleted On:</strong> {selectedTx.deletedAt ? new Date(selectedTx.deletedAt).toLocaleString('en-IN') : 'N/A'}</p>
+                        <p><strong>Deleted By:</strong> {selectedTx.deletedByUserName || 'System'}</p>
+                      </div>
+                    </div>
+                    {(() => {
+                      const isMasterAdmin = currentUser?.id === 'master_super_admin' || currentUser?.role === 'Master Admin';
+                      const isAdmin = userRole === 'firmAdmin' || isMasterAdmin;
+                      if (!isAdmin) return null;
+                      return (
+                        <button 
+                          onClick={() => {
+                            if (window.confirm("Are you sure you want to restore this deleted transaction? This will move it back to the active ledger log and re-apply customer outstanding balances.")) {
+                              // Re-apply customer balance
+                              if (selectedTx.patientName && selectedTx.type !== 'scheme_bill' && selectedTx.type !== 'staff_credit' && selectedTx.type !== 'staff_advance') {
+                                const queryName = selectedTx.patientName.trim().toLowerCase();
+                                if (setCustomers) {
+                                  setCustomers(prev => prev.map(c => {
+                                    if (c.firmId === currentFirmId && c.name.toLowerCase() === queryName) {
+                                      let diff = 0;
+                                      if (selectedTx.type === 'credit_sale') {
+                                        diff = selectedTx.amount;
+                                      } else if (selectedTx.type === 'receive_payment') {
+                                        diff = -selectedTx.amount;
+                                      }
+                                      return { ...c, pendingBalance: Math.max(0, c.pendingBalance + diff) };
+                                    }
+                                    return c;
+                                  }));
+                                }
+                              }
+                              // Re-insert into active transactions
+                              if (setTransactions) {
+                                const { deletedAt, deletedByUserId, deletedByUserName, ...cleanTx } = selectedTx as any;
+                                setTransactions(prev => [cleanTx, ...prev]);
+                              }
+                              // Remove from deleted transactions
+                              if (setDeletedTransactions) {
+                                setDeletedTransactions(prev => prev.filter(t => t.id !== selectedTx.id));
+                              }
+                              setSelectedTx(null);
+                              alert("Transaction restored successfully!");
+                            }
+                          }}
+                          className="w-full h-10 rounded-lg bg-primary hover:bg-primary/95 text-on-primary flex items-center justify-center gap-1.5 text-xs font-bold transition-all shadow-sm cursor-pointer"
+                        >
+                          Restore Transaction
+                        </button>
+                      );
+                    })()}
+                  </div>
+                ) : selectedTx.id.startsWith('LGR-COUNTER-') ? (
                   <div className="space-y-3">
                     <div className="bg-surface-container border border-outline-variant/50 rounded-xl p-3.5">
                       <label className="text-xs font-bold text-on-surface-variant block mb-1.5 uppercase tracking-wide">
@@ -7976,6 +8135,59 @@ function TransactionHistoryScreen({
                           </button>
                         )}
                       </div>
+
+                      <button 
+                        onClick={() => {
+                          const replDate = workingDate || new Date().toISOString().split('T')[0];
+                          if (window.confirm(`Do you want to repeat/duplicate this entry for today's date (${replDate})?`)) {
+                            if (setTransactions) {
+                              const newDuplicatedTx: Transaction = {
+                                id: `T-${Date.now()}`,
+                                firmId: currentFirmId,
+                                type: selectedTx.type,
+                                title: `${selectedTx.title} (Repeated)`,
+                                patientName: selectedTx.patientName,
+                                customerPhone: selectedTx.customerPhone,
+                                amount: selectedTx.amount,
+                                date: replDate,
+                                time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                                recordedByUserId: currentUser?.id || 'admin',
+                                recordedByUserName: currentUser?.name || 'User',
+                                extraDetails: selectedTx.extraDetails ? `${selectedTx.extraDetails} (Replicated)` : 'Replicated Entry',
+                                isRecurring: true,
+                                recurrenceInterval: 'daily'
+                              };
+
+                              // Re-apply customer outstanding balance impact if customer-facing
+                              if (newDuplicatedTx.patientName && newDuplicatedTx.type !== 'scheme_bill' && newDuplicatedTx.type !== 'staff_credit' && newDuplicatedTx.type !== 'staff_advance') {
+                                const queryName = newDuplicatedTx.patientName.trim().toLowerCase();
+                                if (setCustomers) {
+                                  setCustomers(prev => prev.map(c => {
+                                    if (c.firmId === currentFirmId && c.name.toLowerCase() === queryName) {
+                                      let diff = 0;
+                                      if (newDuplicatedTx.type === 'credit_sale') {
+                                        diff = newDuplicatedTx.amount;
+                                      } else if (newDuplicatedTx.type === 'receive_payment') {
+                                        diff = -newDuplicatedTx.amount;
+                                      }
+                                      return { ...c, pendingBalance: Math.max(0, c.pendingBalance + diff) };
+                                    }
+                                    return c;
+                                  }));
+                                }
+                              }
+
+                              setTransactions(prev => [newDuplicatedTx, ...prev]);
+                              alert("Transaction replicated successfully to the current day!");
+                              setSelectedTx(null);
+                            }
+                          }
+                        }}
+                        className="w-full h-9 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-400 border border-indigo-200/50 dark:border-indigo-900/40 flex items-center justify-center gap-1.5 text-xs font-bold transition-all cursor-pointer mt-1"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" />
+                        Replicate / Repeat Entry
+                      </button>
                     </div>
                   );
                 })()}

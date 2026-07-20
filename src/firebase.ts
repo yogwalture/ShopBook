@@ -330,3 +330,43 @@ export async function dbSaveBackup(backupId: string, backupData: any): Promise<v
   }
 }
 
+export async function dbFetchDeletedTransactions(): Promise<any[]> {
+  const path = 'deletedTransactions';
+  try {
+    const snap = await getDocs(collection(db, path));
+    return snap.docs.map(doc => doc.data());
+  } catch (err) {
+    handleFirestoreError(err, OperationType.GET, path);
+    return [];
+  }
+}
+
+export async function dbSaveDeletedTransaction(tx: any): Promise<void> {
+  const path = `deletedTransactions/${tx.id}`;
+  try {
+    await setDoc(doc(db, 'deletedTransactions', tx.id), tx);
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, path);
+  }
+}
+
+export async function dbDeleteDeletedTransaction(txId: string): Promise<void> {
+  const path = `deletedTransactions/${txId}`;
+  try {
+    await deleteDoc(doc(db, 'deletedTransactions', txId));
+  } catch (err) {
+    handleFirestoreError(err, OperationType.DELETE, path);
+  }
+}
+
+export function dbSubscribeDeletedTransactions(onUpdate: (txs: any[]) => void, onError?: (err: Error) => void) {
+  const path = 'deletedTransactions';
+  return onSnapshot(collection(db, path), (snap) => {
+    const data = snap.docs.map(doc => doc.data());
+    onUpdate(data);
+  }, (err) => {
+    handleFirestoreError(err, OperationType.LIST, path);
+    if (onError) onError(err);
+  });
+}
+

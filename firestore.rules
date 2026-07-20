@@ -50,5 +50,10 @@ service cloud.firestore {
     match /backups/{backupId} {
       allow read, write: if true;
     }
+
+    // Rules for Deleted Transactions
+    match /deletedTransactions/{deletedTransactionId} {
+      allow read, write: if true;
+    }
   }
 }

@@ -106,6 +106,13 @@ import {
 
 export type Page = 'welcome' | 'login' | 'registerFirm' | 'firmAdmin' | 'masterAdmin' | 'dashboard' | 'supplierPayment' | 'receivePayment' | 'receiveCashPayment' | 'credit' | 'transactionHistory' | 'dayClosing' | 'schemeCreditSale' | 'customerLedger' | 'staffCredit' | 'staffAdvance' | 'expense';
 
+export function getLocalDateString(d = new Date()): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 export type FirmUser = { name: string, id: string, role: string, mobile: string, password?: string, salary?: number };
 
 export type Handover = {
@@ -466,7 +473,7 @@ export default function App() {
       ...tx,
       id: `T-${Date.now()}`,
       firmId: currentFirmId,
-      date: tx.date || new Date().toISOString().split('T')[0],
+      date: tx.date || getLocalDateString(),
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       recordedByUserId: currentUser?.id || 'admin',
       recordedByUserName: currentUser?.name || activeFirm?.adminName || 'System',
@@ -562,7 +569,7 @@ export default function App() {
   const [workingDate, setWorkingDate] = useState<string>(() => {
     const saved = localStorage.getItem('shopbooks_working_date');
     if (saved) return saved;
-    return new Date().toISOString().split('T')[0];
+    return getLocalDateString();
   });
 
   useEffect(() => {
@@ -630,7 +637,7 @@ export default function App() {
     const firmCustomers = customers.filter(c => c.firmId === currentFirmId);
     if (firmTransactions.length === 0 && firmCustomers.length === 0) return;
 
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = getLocalDateString();
     const lastBackupKey = `shopbooks_last_auto_backup_date_${currentFirmId}`;
     const lastAutoBackupDate = localStorage.getItem(lastBackupKey);
     
@@ -2002,7 +2009,7 @@ function Dashboard({
     }
 
     const newTxList: Transaction[] = [];
-    const currentDateStr = workingDate || new Date().toISOString().split('T')[0];
+    const currentDateStr = workingDate || getLocalDateString();
     const currentTimeStr = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' });
 
     const randId = () => Math.floor(Math.random() * 100000);
@@ -2775,7 +2782,7 @@ function SupplierPaymentScreen({ onBack, onRecordSupplierPayment, workingDate }:
   const [paymentMode, setPaymentMode] = useState('Cash');
   const [amount, setAmount] = useState('');
   const [supplierName, setSupplierName] = useState('');
-  const [date, setDate] = useState(() => workingDate || new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState(() => workingDate || getLocalDateString());
   const [purpose, setPurpose] = useState('Stock');
   const [errorMsg, setErrorMsg] = useState('');
 
@@ -2945,7 +2952,7 @@ function ExpenseScreen({
   const [paymentMode, setPaymentMode] = useState('Cash');
   const [amount, setAmount] = useState('');
   const [expenseName, setExpenseName] = useState('');
-  const [date, setDate] = useState(() => workingDate || new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState(() => workingDate || getLocalDateString());
   const [category, setCategory] = useState('Miscellaneous');
   const [errorMsg, setErrorMsg] = useState('');
 
@@ -3879,7 +3886,7 @@ function ReceivePaymentScreen({
 }) {
   const [platform, setPlatform] = useState(() => initialPlatform || 'upi');
   const [amount, setAmount] = useState('');
-  const [date, setDate] = useState(() => workingDate || new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState(() => workingDate || getLocalDateString());
   
   const prefilledCustomer = selectedCustomerId ? customers.find(c => c.id === selectedCustomerId) : null;
   const [customerName, setCustomerName] = useState(() => prefilledCustomer ? prefilledCustomer.name : '');
@@ -4645,7 +4652,7 @@ function CustomerLedgerScreen({
       doc.text("Outstanding values match active patient registers at local Indian standard times.", 15, currentY + 4);
       doc.text("Thank you for your business relationship!", 15, currentY + 8);
       
-      const fileLabel = `Filtered_Statement_${customer.name.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`;
+      const fileLabel = `Filtered_Statement_${customer.name.replace(/\s+/g, '_')}_${getLocalDateString()}.pdf`;
       doc.save(fileLabel);
     } catch (err) {
       alert("Error generating statement PDF: " + (err instanceof Error ? err.message : String(err)));
@@ -4653,7 +4660,7 @@ function CustomerLedgerScreen({
   };
 
   const handlePresetRange = (preset: 'today' | 'this_month' | 'last_30' | 'clear') => {
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = getLocalDateString();
     if (preset === 'today') {
       setListStartDate(todayStr);
       setListEndDate(todayStr);
@@ -4949,7 +4956,7 @@ function CustomerLedgerScreen({
       doc.text("Outstanding values match active patient registers at local Indian standard times.", 15, currentY + 4);
       doc.text("Thank you for your business relationship!", 15, currentY + 8);
       
-      const fileLabel = `Statement_${customer.name.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`;
+      const fileLabel = `Statement_${customer.name.replace(/\s+/g, '_')}_${getLocalDateString()}.pdf`;
       doc.save(fileLabel);
     } catch (e) {
       console.error("Statement construction failed:", e);
@@ -5698,7 +5705,7 @@ function CreditScreen({
   const [searchQuery, setSearchQuery] = useState('');
   const [patientName, setPatientName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
-  const [saleDate, setSaleDate] = useState(() => workingDate || new Date().toISOString().split('T')[0]);
+  const [saleDate, setSaleDate] = useState(() => workingDate || getLocalDateString());
   const [salesmanName, setSalesmanName] = useState(() => currentUser?.name || 'Staff');
   const [amount, setAmount] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
@@ -5710,14 +5717,14 @@ function CreditScreen({
   const [scSelectedUser, setScSelectedUser] = useState('');
   const [scCustomName, setScCustomName] = useState('');
   const [scAmount, setScAmount] = useState('');
-  const [scDate, setScDate] = useState(() => workingDate || new Date().toISOString().split('T')[0]);
+  const [scDate, setScDate] = useState(() => workingDate || getLocalDateString());
   const [scPurpose, setScPurpose] = useState('');
 
   // Staff Advance States
   const [saSelectedUser, setSaSelectedUser] = useState('');
   const [saCustomName, setSaCustomName] = useState('');
   const [saAmount, setSaAmount] = useState('');
-  const [saDate, setSaDate] = useState(() => workingDate || new Date().toISOString().split('T')[0]);
+  const [saDate, setSaDate] = useState(() => workingDate || getLocalDateString());
   const [saMode, setSaMode] = useState('Cash');
   const [saPurpose, setSaPurpose] = useState('');
 
@@ -7562,7 +7569,7 @@ function TransactionHistoryScreen({
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `${activeFirm?.name || 'ShopBooks'}_Ledger_Report_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute("download", `${activeFirm?.name || 'ShopBooks'}_Ledger_Report_${getLocalDateString()}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -8138,7 +8145,7 @@ function TransactionHistoryScreen({
 
                       <button 
                         onClick={() => {
-                          const replDate = workingDate || new Date().toISOString().split('T')[0];
+                          const replDate = workingDate || getLocalDateString();
                           if (window.confirm(`Do you want to repeat/duplicate this entry for today's date (${replDate})?`)) {
                             if (setTransactions) {
                               const newDuplicatedTx: Transaction = {
@@ -8219,7 +8226,7 @@ function SchemeCreditSaleScreen({
   const [customerPhone, setCustomerPhone] = useState('');
   const [salesmanName, setSalesmanName] = useState(() => currentUser?.name || 'Staff');
   const [scheme, setScheme] = useState('');
-  const [dateOfBill, setDateOfBill] = useState(() => workingDate || new Date().toISOString().split('T')[0]);
+  const [dateOfBill, setDateOfBill] = useState(() => workingDate || getLocalDateString());
   const [amount, setAmount] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
@@ -8455,7 +8462,7 @@ function LoginScreen({ onNavigate, onLogin, onGoogleLogin, firms }: { onNavigate
   const [password, setPassword] = useState(() => {
     return localStorage.getItem('shopbooks_remember_password') || '';
   });
-  const [loginWorkingDate, setLoginWorkingDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [loginWorkingDate, setLoginWorkingDate] = useState(() => getLocalDateString());
   const [errorMsg, setErrorMsg] = useState('');
 
   const handleLoginSubmit = (e: React.FormEvent) => {
@@ -8876,7 +8883,7 @@ function FirmAdminScreen({
     const prevDateStr = (() => {
       const d = new Date(targetDate);
       d.setDate(d.getDate() - 1);
-      return d.toISOString().split('T')[0];
+      return getLocalDateString(d);
     })();
     const prevKey = `${activeFirm.id}_${prevDateStr}`;
     const prevForwarded = firmDailyRegisters[prevKey]?.forwarded || 0;
@@ -9881,7 +9888,7 @@ function MasterAdminScreen({
       patientName,
       customerPhone,
       amount,
-      date: new Date().toISOString().split('T')[0],
+      date: getLocalDateString(),
       time: new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' }),
       recordedByUserId: 'masterAdmin',
       recordedByUserName: 'Master Super Admin',
@@ -9938,7 +9945,7 @@ function MasterAdminScreen({
       phone,
       status: balance > 0 ? 'Pending' : 'Paid',
       pendingBalance: balance,
-      lastPaymentDate: new Date().toISOString().split('T')[0]
+      lastPaymentDate: getLocalDateString()
     };
 
     setCustomers(prev => [...prev, newCust]);

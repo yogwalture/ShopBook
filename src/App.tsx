@@ -57,6 +57,11 @@ import {
   ShieldCheck,
   ShieldAlert,
   RefreshCw,
+  Bell,
+  BellRing,
+  MessageSquare,
+  Send,
+  ExternalLink,
 } from 'lucide-react';
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { CalendarDatePicker } from './components/CalendarDatePicker';
@@ -1225,6 +1230,10 @@ export default function App() {
             onOpenSettings={() => setIsPosSettingsOpen(true)}
             onOpenHandover={() => setIsHandoverModalOpen(true)}
             onNavigate={setCurrentPage}
+            customers={customers}
+            transactions={transactions}
+            currentFirmId={currentFirmId}
+            onSelectCustomer={setSelectedCustomerId}
           />
         </>
       )}
@@ -2701,6 +2710,12 @@ function Dashboard({
           </section>
         )}
 
+        <CollectionNotificationBanner 
+          customers={customers}
+          currentFirmId={currentFirmId}
+          onNavigate={onNavigate}
+          onSelectCustomer={onSelectCustomer}
+        />
         <QuickActions onNavigate={onNavigate} />
         <PageHeader 
           workingDate={workingDate} 
@@ -3169,7 +3184,29 @@ function SideNav({ onNavigate, activePage, userRole, onLogout, activeFirm, curre
   );
 }
 
-function MobileHeader({ activeFirm, currentUser, onClearAllData, onOpenSettings, onOpenHandover, onNavigate }: { activeFirm?: Firm, currentUser?: any, onClearAllData?: () => void, onOpenSettings?: () => void, onOpenHandover?: () => void, onNavigate?: (page: Page) => void }) {
+function MobileHeader({ 
+  activeFirm, 
+  currentUser, 
+  onClearAllData, 
+  onOpenSettings, 
+  onOpenHandover, 
+  onNavigate,
+  customers = [],
+  transactions = [],
+  currentFirmId = '',
+  onSelectCustomer
+}: { 
+  activeFirm?: Firm, 
+  currentUser?: any, 
+  onClearAllData?: () => void, 
+  onOpenSettings?: () => void, 
+  onOpenHandover?: () => void, 
+  onNavigate?: (page: Page) => void,
+  customers?: Customer[],
+  transactions?: Transaction[],
+  currentFirmId?: string,
+  onSelectCustomer?: (id: string | null) => void
+}) {
   const [showProfile, setShowProfile] = useState(false);
 
   return (
@@ -3177,12 +3214,24 @@ function MobileHeader({ activeFirm, currentUser, onClearAllData, onOpenSettings,
       <div className="flex items-center gap-2">
         <span className="text-headline-mobile text-primary font-bold">ShopBooks</span>
       </div>
-      <button 
-        onClick={() => setShowProfile(true)}
-        className="text-on-surface-variant hover:bg-surface-container-low p-2 rounded-full transition-colors duration-200 cursor-pointer"
-      >
-        <UserCircle className="w-6 h-6 text-primary" />
-      </button>
+      <div className="flex items-center gap-1">
+        {onNavigate && onSelectCustomer && (
+          <CollectionNotificationCenter 
+            customers={customers}
+            transactions={transactions}
+            currentFirmId={currentFirmId}
+            activeFirm={activeFirm}
+            onNavigate={onNavigate}
+            onSelectCustomer={onSelectCustomer}
+          />
+        )}
+        <button 
+          onClick={() => setShowProfile(true)}
+          className="text-on-surface-variant hover:bg-surface-container-low p-2 rounded-full transition-colors duration-200 cursor-pointer"
+        >
+          <UserCircle className="w-6 h-6 text-primary" />
+        </button>
+      </div>
 
       {/* Profile Dialog */}
       {showProfile && (
@@ -3481,29 +3530,67 @@ function BentoGrid({
             </p>
           </div>
           
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full md:w-auto min-w-[280px] lg:min-w-[480px]">
-            <div className="bg-surface-container-lowest border border-outline-variant/30 rounded-lg p-3 hover:border-error/30 transition-all flex flex-col justify-between">
-              <div>
-                <div className="text-[10px] font-bold text-on-surface-variant/80 uppercase tracking-wider mb-1">Patient Dues</div>
-                <div className="text-lg font-bold text-error">₹{totalPatientOutstanding.toLocaleString()}</div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full md:w-auto min-w-[280px] lg:min-w-[480px]">
+              <div 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onNavigateToTxHistory('credit_sale');
+                }}
+                className="bg-surface-container-lowest border border-outline-variant/30 rounded-lg p-3 hover:border-error/60 hover:bg-error/5 transition-all flex flex-col justify-between cursor-pointer group shadow-2xs"
+              >
+                <div>
+                  <div className="flex items-center justify-between">
+                    <div className="text-[10px] font-bold text-on-surface-variant/80 uppercase tracking-wider mb-1">Patient Dues</div>
+                    <ExternalLink className="w-3.5 h-3.5 text-error opacity-0 group-hover:opacity-100 transition-opacity" />
+                  </div>
+                  <div className="text-lg font-bold text-error">₹{totalPatientOutstanding.toLocaleString()}</div>
+                </div>
+                <div className="text-[10px] text-on-surface-variant/70 mt-1.5 flex items-center justify-between">
+                  <span>Patient credit sales</span>
+                  <span className="font-bold text-error text-[9px] underline">View Entries →</span>
+                </div>
               </div>
-              <div className="text-[10px] text-on-surface-variant/70 mt-1.5">From active accounts</div>
-            </div>
-            <div className="bg-surface-container-lowest border border-outline-variant/30 rounded-lg p-3 hover:border-amber-600/30 transition-all flex flex-col justify-between">
-              <div>
-                <div className="text-[10px] font-bold text-on-surface-variant/80 uppercase tracking-wider mb-1">Staff Credits</div>
-                <div className="text-lg font-bold text-amber-600">₹{totalStaffCreditOutstanding.toLocaleString()}</div>
+
+              <div 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onNavigateToTxHistory('staff_credit');
+                }}
+                className="bg-surface-container-lowest border border-outline-variant/30 rounded-lg p-3 hover:border-amber-600/60 hover:bg-amber-500/5 transition-all flex flex-col justify-between cursor-pointer group shadow-2xs"
+              >
+                <div>
+                  <div className="flex items-center justify-between">
+                    <div className="text-[10px] font-bold text-on-surface-variant/80 uppercase tracking-wider mb-1">Staff Credits</div>
+                    <ExternalLink className="w-3.5 h-3.5 text-amber-600 opacity-0 group-hover:opacity-100 transition-opacity" />
+                  </div>
+                  <div className="text-lg font-bold text-amber-600">₹{totalStaffCreditOutstanding.toLocaleString()}</div>
+                </div>
+                <div className="text-[10px] text-on-surface-variant/70 mt-1.5 flex items-center justify-between">
+                  <span>Store credit ledger</span>
+                  <span className="font-bold text-amber-600 text-[9px] underline">View Entries →</span>
+                </div>
               </div>
-              <div className="text-[10px] text-on-surface-variant/70 mt-1.5">Store credit ledger</div>
-            </div>
-            <div className="bg-surface-container-lowest border border-outline-variant/30 rounded-lg p-3 hover:border-blue-600/30 transition-all flex flex-col justify-between">
-              <div>
-                <div className="text-[10px] font-bold text-on-surface-variant/80 uppercase tracking-wider mb-1">Scheme Bills</div>
-                <div className="text-lg font-bold text-blue-600">₹{totalSchemeBillsOutstanding.toLocaleString()}</div>
+
+              <div 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onNavigateToTxHistory('scheme_bill');
+                }}
+                className="bg-surface-container-lowest border border-outline-variant/30 rounded-lg p-3 hover:border-blue-600/60 hover:bg-blue-500/5 transition-all flex flex-col justify-between cursor-pointer group shadow-2xs"
+              >
+                <div>
+                  <div className="flex items-center justify-between">
+                    <div className="text-[10px] font-bold text-on-surface-variant/80 uppercase tracking-wider mb-1">Scheme Bills</div>
+                    <ExternalLink className="w-3.5 h-3.5 text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity" />
+                  </div>
+                  <div className="text-lg font-bold text-blue-600">₹{totalSchemeBillsOutstanding.toLocaleString()}</div>
+                </div>
+                <div className="text-[10px] text-on-surface-variant/70 mt-1.5 flex items-center justify-between">
+                  <span>Scheme recovery</span>
+                  <span className="font-bold text-blue-600 text-[9px] underline">View Entries →</span>
+                </div>
               </div>
-              <div className="text-[10px] text-on-surface-variant/70 mt-1.5">Awaiting scheme recovery</div>
             </div>
-          </div>
         </div>
 
         {/* Secondary Metrics */}
@@ -3668,6 +3755,319 @@ function BentoGrid({
         </div>
       )}
     </>
+  );
+}
+
+function CollectionNotificationCenter({
+  customers,
+  transactions,
+  currentFirmId,
+  activeFirm,
+  onNavigate,
+  onSelectCustomer
+}: {
+  customers: Customer[],
+  transactions: Transaction[],
+  currentFirmId: string,
+  activeFirm?: Firm,
+  onNavigate: (page: Page) => void,
+  onSelectCustomer: (id: string | null) => void
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const [activeTab, setActiveTab] = useState<'all' | 'overdue' | 'high_value'>('all');
+  const [followUpDates, setFollowUpDates] = useState<Record<string, string>>(() => {
+    try {
+      const saved = localStorage.getItem(`shopbooks_followups_${currentFirmId}`);
+      return saved ? JSON.parse(saved) : {};
+    } catch (e) {
+      return {};
+    }
+  });
+
+  const activeCustomers = useMemo(() => {
+    return customers.filter(c => c.firmId === currentFirmId && c.pendingBalance > 0);
+  }, [customers, currentFirmId]);
+
+  const totalPending = useMemo(() => {
+    return activeCustomers.reduce((sum, c) => sum + c.pendingBalance, 0);
+  }, [activeCustomers]);
+
+  const filteredList = useMemo(() => {
+    let list = activeCustomers;
+    if (search.trim()) {
+      const q = search.toLowerCase().trim();
+      list = list.filter(c => c.name.toLowerCase().includes(q) || (c.phone && c.phone.includes(q)));
+    }
+    if (activeTab === 'overdue') {
+      list = list.filter(c => c.status === 'Overdue' || c.pendingBalance > 1000);
+    } else if (activeTab === 'high_value') {
+      list = [...list].sort((a, b) => b.pendingBalance - a.pendingBalance);
+    }
+    return list;
+  }, [activeCustomers, search, activeTab]);
+
+  const handleSetFollowUp = (customerId: string, dateStr: string) => {
+    const updated = { ...followUpDates, [customerId]: dateStr };
+    setFollowUpDates(updated);
+    try {
+      localStorage.setItem(`shopbooks_followups_${currentFirmId}`, JSON.stringify(updated));
+    } catch (e) {}
+  };
+
+  const getWhatsAppLink = (customer: Customer) => {
+    const rawPhone = (customer.phone || '').replace(/[^0-9]/g, '');
+    const cleanPhone = rawPhone.length === 10 ? `91${rawPhone}` : rawPhone;
+    const firmName = activeFirm?.name || 'ShopBooks';
+    const message = `Hello ${customer.name} Ji,\n\nThis is a gentle reminder from ${firmName} regarding your pending bill balance of ₹${customer.pendingBalance.toLocaleString()}.\n\nKindly settle the amount at your convenience via UPI or Cash.\n\nThank you!`;
+    return `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(message)}`;
+  };
+
+  return (
+    <>
+      {/* Bell Trigger Button */}
+      <button 
+        onClick={() => setIsOpen(true)}
+        className="relative p-2 rounded-full hover:bg-surface-container-low transition-colors duration-200 cursor-pointer flex items-center justify-center text-on-surface-variant"
+        title="Payment Collection Notifications"
+      >
+        <Bell className="w-5.5 h-5.5 text-primary" />
+        {activeCustomers.length > 0 && (
+          <span className="absolute -top-0.5 -right-0.5 bg-error text-white font-bold text-[10px] w-5 h-5 rounded-full flex items-center justify-center border-2 border-surface-container-lowest animate-pulse">
+            {activeCustomers.length}
+          </span>
+        )}
+      </button>
+
+      {/* Slide-over Drawer / Modal Panel */}
+      {isOpen && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-end bg-black/60 backdrop-blur-sm p-0 md:p-4 text-left">
+          <div className="bg-surface-bright border-l md:border border-outline-variant w-full max-w-md h-full md:h-[90vh] md:rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+            
+            {/* Header */}
+            <div className="bg-primary text-on-primary p-4 flex justify-between items-center shadow-md">
+              <div className="flex items-center gap-3">
+                <div className="bg-white/20 p-2.5 rounded-xl">
+                  <BellRing className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-white text-base leading-snug">Payment Collection Alerts</h3>
+                  <p className="text-xs text-white/85">
+                    {activeCustomers.length} pending accounts • Total: ₹{totalPending.toLocaleString()}
+                  </p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setIsOpen(false)}
+                className="hover:bg-white/20 p-1.5 rounded-full text-white transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Quick Filter Tabs */}
+            <div className="p-3 bg-surface-container-low border-b border-outline-variant flex gap-2">
+              <button 
+                onClick={() => setActiveTab('all')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${activeTab === 'all' ? 'bg-primary text-on-primary shadow-xs' : 'bg-surface-bright text-on-surface-variant hover:bg-surface-container-high'}`}
+              >
+                All ({activeCustomers.length})
+              </button>
+              <button 
+                onClick={() => setActiveTab('overdue')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${activeTab === 'overdue' ? 'bg-error text-white shadow-xs' : 'bg-surface-bright text-on-surface-variant hover:bg-surface-container-high'}`}
+              >
+                Overdue
+              </button>
+              <button 
+                onClick={() => setActiveTab('high_value')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${activeTab === 'high_value' ? 'bg-amber-600 text-white shadow-xs' : 'bg-surface-bright text-on-surface-variant hover:bg-surface-container-high'}`}
+              >
+                Highest Dues
+              </button>
+            </div>
+
+            {/* Search Input */}
+            <div className="p-3 bg-surface-container-lowest border-b border-outline-variant">
+              <div className="relative">
+                <Search className="w-4 h-4 text-on-surface-variant absolute left-3 top-1/2 -translate-y-1/2" />
+                <input 
+                  type="text"
+                  placeholder="Search patient name or phone..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="w-full pl-9 pr-3 py-1.5 bg-surface-bright border border-outline-variant rounded-lg text-xs text-on-background outline-none focus:border-primary"
+                />
+              </div>
+            </div>
+
+            {/* Collection Cards Scroll Area */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-surface-container-lowest">
+              {filteredList.length > 0 ? (
+                filteredList.map((c) => {
+                  const whatsappUrl = getWhatsAppLink(c);
+                  const savedFollowUp = followUpDates[c.id];
+
+                  return (
+                    <div 
+                      key={c.id}
+                      className="p-3.5 bg-surface-bright rounded-xl border border-outline-variant/40 hover:border-primary/40 shadow-xs transition-all space-y-2.5"
+                    >
+                      <div className="flex justify-between items-start">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-9 h-9 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-xs">
+                            {c.name.charAt(0).toUpperCase()}
+                          </div>
+                          <div>
+                            <div className="font-bold text-sm text-on-background">{c.name}</div>
+                            <div className="text-xs text-on-surface-variant font-mono">{c.phone || 'No Mobile'}</div>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-base font-extrabold text-error">₹{c.pendingBalance.toLocaleString()}</div>
+                          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase ${c.status === 'Overdue' ? 'bg-error/10 text-error' : 'bg-amber-500/10 text-amber-700'}`}>
+                            {c.status || 'Pending'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {savedFollowUp && (
+                        <div className="bg-primary/5 text-primary p-2 rounded-lg text-xs flex items-center gap-1.5 font-medium">
+                          <Clock className="w-3.5 h-3.5 shrink-0" />
+                          <span>Follow-up Date: {savedFollowUp}</span>
+                        </div>
+                      )}
+
+                      {/* Action Buttons */}
+                      <div className="grid grid-cols-2 gap-2 pt-1 border-t border-outline-variant/20">
+                        <a 
+                          href={whatsappUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center justify-center gap-1.5 px-2.5 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs font-bold transition-all shadow-2xs"
+                        >
+                          <Send className="w-3.5 h-3.5" />
+                          WhatsApp
+                        </a>
+
+                        <button 
+                          onClick={() => {
+                            onSelectCustomer(c.id);
+                            onNavigate('receiveCashPayment');
+                            setIsOpen(false);
+                          }}
+                          className="flex items-center justify-center gap-1.5 px-2.5 py-1.5 bg-primary hover:bg-primary/90 text-on-primary rounded-lg text-xs font-bold transition-all shadow-2xs cursor-pointer"
+                        >
+                          <Banknote className="w-3.5 h-3.5" />
+                          Settle Cash
+                        </button>
+                      </div>
+
+                      <div className="flex justify-between items-center text-[10px] text-on-surface-variant pt-1">
+                        <button 
+                          onClick={() => {
+                            onSelectCustomer(c.id);
+                            onNavigate('customerLedger');
+                            setIsOpen(false);
+                          }}
+                          className="hover:text-primary font-semibold underline cursor-pointer"
+                        >
+                          View Full Ledger →
+                        </button>
+
+                        <div className="flex items-center gap-1">
+                          <span className="text-[9px] text-on-surface-variant/70">Follow-up:</span>
+                          <input 
+                            type="date"
+                            value={savedFollowUp || ''}
+                            onChange={(e) => handleSetFollowUp(c.id, e.target.value)}
+                            className="text-[10px] border border-outline-variant rounded px-1 py-0.5 bg-surface-bright text-on-surface-variant cursor-pointer"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="text-center p-8 bg-surface-container-low rounded-xl border border-dashed border-outline-variant">
+                  <CheckCircle className="w-8 h-8 text-green-600 mx-auto mb-2" />
+                  <p className="text-xs font-semibold text-on-surface">No matching collection accounts!</p>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="p-3 bg-surface-container-low border-t border-outline-variant text-center text-[11px] text-on-surface-variant font-medium">
+              <span>💡 Tap <b>Settle Cash</b> to record cash payment received directly against a patient's credit sale.</span>
+            </div>
+
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+function CollectionNotificationBanner({
+  customers,
+  currentFirmId,
+  onNavigate,
+  onSelectCustomer
+}: {
+  customers: Customer[],
+  currentFirmId: string,
+  onNavigate: (page: Page) => void,
+  onSelectCustomer: (id: string | null) => void
+}) {
+  const pendingCustomers = useMemo(() => {
+    return customers.filter(c => c.firmId === currentFirmId && c.pendingBalance > 0);
+  }, [customers, currentFirmId]);
+
+  const totalAmount = useMemo(() => {
+    return pendingCustomers.reduce((sum, c) => sum + c.pendingBalance, 0);
+  }, [pendingCustomers]);
+
+  if (pendingCustomers.length === 0) return null;
+
+  return (
+    <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-left my-2 shadow-2xs">
+      <div className="flex items-start gap-3">
+        <div className="bg-amber-500 text-white p-2 rounded-xl shrink-0">
+          <BellRing className="w-5 h-5 animate-pulse" />
+        </div>
+        <div>
+          <h4 className="text-xs font-bold text-amber-800 uppercase tracking-wider">Payment Collection Alert</h4>
+          <p className="text-xs text-on-surface font-semibold mt-0.5">
+            <b>{pendingCustomers.length} patient accounts</b> have a total of <span className="text-error font-extrabold">₹{totalAmount.toLocaleString()}</span> in pending dues awaiting collection.
+          </p>
+        </div>
+      </div>
+      <div className="flex items-center gap-2 shrink-0">
+        <button 
+          onClick={() => {
+            if (pendingCustomers[0]) {
+              onSelectCustomer(pendingCustomers[0].id);
+            }
+            onNavigate('receiveCashPayment');
+          }}
+          className="px-3.5 py-1.5 bg-green-600 hover:bg-green-700 text-white font-bold text-xs rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs"
+        >
+          <Banknote className="w-3.5 h-3.5" />
+          Settle Cash
+        </button>
+        <button 
+          onClick={() => {
+            if (pendingCustomers[0]) {
+              onSelectCustomer(pendingCustomers[0].id);
+            }
+            onNavigate('credit');
+          }}
+          className="px-3 py-1.5 bg-surface-bright hover:bg-surface-container-high border border-outline-variant text-on-surface font-bold text-xs rounded-xl transition-all cursor-pointer"
+        >
+          View Dues
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -5846,6 +6246,12 @@ function CreditScreen({
 
   return (
     <main className="p-container-padding-mobile md:p-container-padding-desktop max-w-7xl mx-auto space-y-stack-lg text-left pb-24">
+      <CollectionNotificationBanner 
+        customers={customers}
+        currentFirmId={currentFirmId}
+        onNavigate={onNavigate}
+        onSelectCustomer={onSelectCustomer}
+      />
       {/* Header Summary section */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-stack-md">
         <div>

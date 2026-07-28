@@ -1277,7 +1277,6 @@ export default function App() {
           counterCashSales={counterCashSales}
           counterOnlineSales={counterOnlineSales}
           onNavigateToTxHistory={handleNavigateToTxHistory}
-          onNavigateToDayClosing={() => setCurrentPage('dayClosing')}
           workingDate={workingDate}
           isClosed={isDayClosed}
           setTransactions={setTransactions}
@@ -1902,7 +1901,7 @@ function Dashboard({
   counterCashSales: number,
   counterOnlineSales: number,
   onNavigateToTxHistory: (filterType: string, searchQuery?: string) => void,
-  onNavigateToDayClosing: () => void,
+  onNavigateToDayClosing?: () => void,
   workingDate: string,
   isClosed: boolean,
   setTransactions?: React.Dispatch<React.SetStateAction<Transaction[]>>,
@@ -3118,10 +3117,6 @@ function SideNav({ onNavigate, activePage, userRole, onLogout, activeFirm, curre
           <Wallet className="w-6 h-6" />
           <span className="text-label-md">Credit</span>
         </button>
-        <button onClick={() => onNavigate('dayClosing')} className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors duration-200 ${activePage === 'dayClosing' ? 'bg-secondary-container text-on-secondary-container' : 'text-on-surface-variant hover:bg-surface-container-low'}`}>
-          <BarChart2 className="w-6 h-6" />
-          <span className="text-label-md">Day Closing</span>
-        </button>
         <button onClick={onOpenSettings} className="flex items-center gap-3 px-4 py-3 rounded-lg transition-colors duration-200 text-on-surface-variant hover:bg-surface-container-low">
           <Settings className="w-6 h-6" />
           <span className="text-label-md">Settings</span>
@@ -3389,7 +3384,7 @@ function BentoGrid({
   isDemoMode?: boolean,
   openingCash: number,
   onNavigateToTxHistory: (filterType: string, searchQuery?: string) => void,
-  onNavigateToDayClosing: () => void,
+  onNavigateToDayClosing?: () => void,
   allTransactions: Transaction[],
   onNavigate?: (page: Page) => void,
   onSelectCustomer?: (id: string | null) => void
@@ -3516,32 +3511,38 @@ function BentoGrid({
           title="Payment Collection (Cash)" 
           amount={`₹${paymentCollectionCash.toLocaleString()}`} 
           amountColor="text-green-600" 
-          onClick={() => onNavigateToTxHistory('receive_payment', 'cash')}
+          onClick={() => onNavigateToTxHistory('receive_payment_cash')}
         />
         <MetricCard 
           title="Payment Collection (Online)" 
           amount={`₹${paymentCollectionOnline.toLocaleString()}`} 
           amountColor="text-teal-600" 
-          onClick={() => onNavigateToTxHistory('receive_payment', 'online')}
+          onClick={() => onNavigateToTxHistory('receive_payment_online')}
         />
         <MetricCard 
           title="Credit Given (Patients & Staff)" 
           amount={`₹${totalCreditGiven.toLocaleString()}`} 
           className="border border-error-container hover:border-error/40" 
           amountColor="text-error" 
-          onClick={() => onNavigateToTxHistory('credit_sale', '')}
+          onClick={() => onNavigateToTxHistory('credit_sale')}
         />
         <MetricCard 
           title="Scheme Bills (Today)" 
           amount={`₹${dynamicSchemeReceivables.toLocaleString()}`} 
           amountColor="text-blue-600" 
-          onClick={() => onNavigateToTxHistory('scheme_bill', '')}
+          onClick={() => onNavigateToTxHistory('scheme_bill')}
         />
         <MetricCard 
-          title="Expenses (Store/Suppliers)" 
+          title="Supplier Payment" 
+          amount={`₹${supplierPaymentInCash.toLocaleString()}`} 
+          amountColor="text-purple-600" 
+          onClick={() => onNavigateToTxHistory('supplier_payment')}
+        />
+        <MetricCard 
+          title="Expenses (Store/Expenses)" 
           amount={`₹${totalExpenses.toLocaleString()}`} 
           amountColor="text-on-surface" 
-          onClick={() => onNavigateToTxHistory('supplier_payment', '')}
+          onClick={() => onNavigateToTxHistory('expense')}
         />
         <MetricCard 
           title="Staff Credit Ledger" 
@@ -3840,7 +3841,6 @@ function BottomNav({ onNavigate, activePage, userRole, onLogout }: { onNavigate:
     <nav className="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center h-20 px-2 bg-surface-container-lowest border-t border-outline-variant md:hidden">
       <NavItem icon={<Home className={`w-6 h-6 ${activePage === 'dashboard' ? 'fill-on-secondary-container' : ''}`} />} label="Home" active={activePage === 'dashboard'} onClick={() => onNavigate('dashboard')} />
       <NavItem icon={<Wallet className={`w-6 h-6 ${activePage === 'credit' ? 'fill-on-secondary-container' : ''}`} />} label="Credit" active={activePage === 'credit'} onClick={() => onNavigate('credit')} />
-      <NavItem icon={<FileText className={`w-6 h-6 ${activePage === 'dayClosing' ? 'fill-on-secondary-container' : ''}`} />} label="Closing" active={activePage === 'dayClosing'} onClick={() => onNavigate('dayClosing')} />
       {userRole === 'firmAdmin' && (
          <NavItem icon={<ShieldPlus className="w-6 h-6 text-primary" />} label="Admin" active={false} onClick={() => onNavigate('firmAdmin')} />
       )}
@@ -6674,7 +6674,7 @@ function DayClosingScreen({
       doc.setTextColor(80, 80, 80);
       doc.text("Calibrated Physical Drawer Target", 110, 87);
       doc.setFont("helvetica", "italic");
-      doc.text("Equation updated with corrected formula.", 110, 93);
+      doc.text("Reconciled against active registers.", 110, 93);
       doc.text("Verify physical registry daily.", 110, 99);
 
       // Section: Day Performance Analytics
@@ -7539,7 +7539,15 @@ function TransactionHistoryScreen({
       );
     }
 
-    if (selectedType !== 'all' && selectedType !== 'deleted_log') {
+    if (selectedType === 'receive_payment_cash') {
+      list = list.filter(t => t.type === 'receive_payment' && (t.extraDetails || '').toLowerCase().includes('cash'));
+    } else if (selectedType === 'receive_payment_online') {
+      list = list.filter(t => t.type === 'receive_payment' && !(t.extraDetails || '').toLowerCase().includes('cash'));
+    } else if (selectedType === 'expense') {
+      list = list.filter(t => (t.title || '').toLowerCase().includes('expense') || (t.extraDetails || '').toLowerCase().includes('expense'));
+    } else if (selectedType === 'supplier_payment') {
+      list = list.filter(t => t.type === 'supplier_payment' && !(t.title || '').toLowerCase().includes('expense') && !(t.extraDetails || '').toLowerCase().includes('expense'));
+    } else if (selectedType !== 'all' && selectedType !== 'deleted_log') {
       list = list.filter(t => t.type === selectedType);
     }
 
@@ -7653,14 +7661,16 @@ function TransactionHistoryScreen({
               const isAdmin = userRole === 'firmAdmin' || isMasterAdmin;
               const pills = [
                 { id: 'all', label: 'All Logs' },
-                { id: 'counter_cash', label: 'Counter Cash' },
-                { id: 'counter_online', label: 'Counter Online' },
                 { id: 'credit_sale', label: 'Credit Sales' },
-                { id: 'receive_payment', label: 'Payments Recv' },
-                { id: 'supplier_payment', label: 'Supplier Paid' },
                 { id: 'scheme_bill', label: 'Scheme Bills' },
+                { id: 'receive_payment_online', label: 'Online Payment' },
+                { id: 'receive_payment_cash', label: 'Cash Payment Received' },
+                { id: 'supplier_payment', label: 'Supplier Payment' },
+                { id: 'expense', label: 'Expenses' },
                 { id: 'staff_credit', label: 'Staff Credits' },
-                { id: 'staff_advance', label: 'Staff Advances' }
+                { id: 'staff_advance', label: 'Staff Advances' },
+                { id: 'counter_cash', label: 'Counter Cash' },
+                { id: 'counter_online', label: 'Counter Online' }
               ];
               if (isAdmin) {
                 pills.push({ id: 'deleted_log', label: '❌ Deleted Log' });

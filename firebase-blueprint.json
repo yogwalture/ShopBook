@@ -102,6 +102,30 @@
         "firmDailyRegisters": { "type": "object" }
       },
       "required": ["firmId", "isAuto", "autoBackupTime"]
+    },
+    "StaffAttendance": {
+      "title": "StaffAttendance",
+      "description": "Daily staff shift check-in and check-out attendance records",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "firmId": { "type": "string" },
+        "staffId": { "type": "string" },
+        "staffName": { "type": "string" },
+        "staffMobile": { "type": "string" },
+        "role": { "type": "string" },
+        "date": { "type": "string" },
+        "shiftType": { "type": "string", "enum": ["Morning", "Evening", "Night", "Full Day"] },
+        "status": { "type": "string", "enum": ["Present", "Half Day", "Absent", "On Leave"] },
+        "checkInTime": { "type": "string" },
+        "checkOutTime": { "type": "string" },
+        "totalHours": { "type": "number" },
+        "overtimeHours": { "type": "number" },
+        "notes": { "type": "string" },
+        "recordedByUserId": { "type": "string" },
+        "recordedByUserName": { "type": "string" }
+      },
+      "required": ["id", "firmId", "staffId", "staffName", "date", "shiftType", "status", "checkInTime"]
     }
   },
   "firestore": {
@@ -128,6 +152,10 @@
     "/backups/{backupId}": {
       "schema": "Backup",
       "description": "System database full-sync recovery and automated backups"
+    },
+    "/staffAttendance/{attendanceId}": {
+      "schema": "StaffAttendance",
+      "description": "Staff attendance shift logs and duty check-ins"
     }
   }
 }

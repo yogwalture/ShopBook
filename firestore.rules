@@ -51,6 +51,21 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
+    // Rules for Cashless Claims (MJPJAY & Insurance)
+    match /cashlessClaims/{claimId} {
+      allow read, write: if true;
+    }
+
+    // Rules for Credit Reminders & Follow-ups
+    match /creditReminders/{reminderId} {
+      allow read, write: if true;
+    }
+
+    // Rules for Staff Attendance & Shift Records
+    match /staffAttendance/{attendanceId} {
+      allow read, write: if true;
+    }
+
     // Rules for Deleted Transactions
     match /deletedTransactions/{deletedTransactionId} {
       allow read, write: if true;

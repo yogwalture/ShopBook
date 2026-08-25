@@ -35,6 +35,7 @@ import {
   TrendingUp,
   Truck,
   User,
+  UserCheck,
   UserCircle,
   Users,
   Wallet,
@@ -93,7 +94,19 @@ import {
   dbSaveDeletedTransaction,
   dbDeleteDeletedTransaction,
   dbSubscribeDeletedTransactions,
+  dbSaveCashlessClaim,
+  dbDeleteCashlessClaim,
+  dbSubscribeCashlessClaims,
+  dbSaveCreditReminder,
+  dbSubscribeCreditReminders,
+  dbSaveStaffAttendance,
+  dbDeleteStaffAttendance,
+  dbSubscribeStaffAttendance
 } from './firebase';
+import { CashlessPatientScreen, CashlessClaim } from './components/CashlessPatientScreen';
+import { CreditRemindersScreen } from './components/CreditRemindersScreen';
+import { MonthlyReportScreen } from './components/MonthlyReportScreen';
+import { StaffAttendanceManager, StaffAttendanceRecord } from './components/StaffAttendanceManager';
 import {
   ResponsiveContainer,
   LineChart,
@@ -109,7 +122,7 @@ import {
   Cell,
 } from 'recharts';
 
-export type Page = 'welcome' | 'login' | 'registerFirm' | 'firmAdmin' | 'masterAdmin' | 'dashboard' | 'supplierPayment' | 'receivePayment' | 'receiveCashPayment' | 'credit' | 'transactionHistory' | 'dayClosing' | 'schemeCreditSale' | 'customerLedger' | 'staffCredit' | 'staffAdvance' | 'expense';
+export type Page = 'welcome' | 'login' | 'registerFirm' | 'firmAdmin' | 'masterAdmin' | 'dashboard' | 'supplierPayment' | 'receivePayment' | 'receiveCashPayment' | 'credit' | 'transactionHistory' | 'dayClosing' | 'schemeCreditSale' | 'customerLedger' | 'staffCredit' | 'staffAdvance' | 'expense' | 'cashlessPatient' | 'creditReminders' | 'monthlyReport';
 
 export function getLocalDateString(d = new Date()): string {
   const year = d.getFullYear();
@@ -196,6 +209,158 @@ export const SEEDED_DEFAULT_FIRM: Firm = {
 };
 
 export const INITIAL_FIRMS: Firm[] = [SEEDED_DEFAULT_FIRM];
+
+export const INITIAL_CASHLESS_CLAIMS: CashlessClaim[] = [
+  {
+    id: 'CLAIM_MJP_101',
+    firmId: 'F-1001',
+    type: 'MJPJAY',
+    patientName: 'Sunita Tukaram Shinde',
+    patientPhone: '9822145566',
+    billNumber: 'BILL-MJP-9081',
+    preAuthNumber: 'MJP-2026-004128',
+    rationCardNumber: 'MH-OR-8829104',
+    packageName: 'General Surgery & Post-Op Care',
+    packageCode: 'MJP-SURG-102',
+    hospitalName: 'District Civil Hospital, Aurangabad',
+    ipdNumber: 'IPD-409',
+    doctorName: 'Dr. Deshmukh',
+    billAmount: 18500,
+    approvedAmount: 18500,
+    settledAmount: 12000,
+    outstandingAmount: 6500,
+    status: 'Partially_Settled',
+    date: '2026-08-18',
+    settlementDate: '2026-08-22',
+    settlementRef: 'UTR-882910411',
+    recordedByUserId: 'admin',
+    recordedByUserName: 'Yograj Walture'
+  },
+  {
+    id: 'CLAIM_MJP_102',
+    firmId: 'F-1001',
+    type: 'MJPJAY',
+    patientName: 'Prakash Mahadev Gaikwad',
+    patientPhone: '9423189900',
+    billNumber: 'BILL-MJP-9095',
+    preAuthNumber: 'MJP-2026-005519',
+    rationCardNumber: 'MH-OR-9912044',
+    packageName: 'Cardiology & Stent Medication Kit',
+    packageCode: 'MJP-CARD-204',
+    hospitalName: 'Apollo Hospital Ward 3',
+    ipdNumber: 'IPD-512',
+    doctorName: 'Dr. Kulkarni',
+    billAmount: 26400,
+    approvedAmount: 26400,
+    settledAmount: 0,
+    outstandingAmount: 26400,
+    status: 'Approved',
+    date: '2026-08-20',
+    recordedByUserId: 'admin',
+    recordedByUserName: 'Yograj Walture'
+  },
+  {
+    id: 'CLAIM_INS_201',
+    firmId: 'F-1001',
+    type: 'Insurance',
+    patientName: 'Vikas Madhukar Jadhav',
+    patientPhone: '9765123400',
+    billNumber: 'BILL-INS-4401',
+    insuranceCompany: 'Star Health and Allied Insurance',
+    tpaName: 'Star Health In-House TPA',
+    policyNumber: 'STAR-IND-2026-9901',
+    preAuthNumber: 'PA-STAR-881920',
+    hospitalName: 'City Lifeline Care Hospital',
+    ipdNumber: 'IPD-108',
+    doctorName: 'Dr. S. Patil',
+    billAmount: 34000,
+    approvedAmount: 32000,
+    coPayAmount: 2000,
+    settledAmount: 32000,
+    outstandingAmount: 0,
+    status: 'Settled',
+    date: '2026-08-15',
+    settlementDate: '2026-08-21',
+    settlementRef: 'UTR-773829104',
+    recordedByUserId: 'admin',
+    recordedByUserName: 'Yograj Walture'
+  },
+  {
+    id: 'CLAIM_INS_202',
+    firmId: 'F-1001',
+    type: 'Insurance',
+    patientName: 'Anjali Rajesh Kale',
+    patientPhone: '9922001188',
+    billNumber: 'BILL-INS-4482',
+    insuranceCompany: 'HDFC ERGO Health Insurance',
+    tpaName: 'MediBuddy / Medi Assist TPA',
+    policyNumber: 'HDFC-HLT-772910',
+    preAuthNumber: 'PA-MEDI-449102',
+    hospitalName: 'Ruby Medical Centre',
+    ipdNumber: 'IPD-219',
+    doctorName: 'Dr. Mehta',
+    billAmount: 22800,
+    approvedAmount: 21500,
+    coPayAmount: 1300,
+    settledAmount: 0,
+    outstandingAmount: 21500,
+    status: 'Submitted',
+    date: '2026-08-22',
+    recordedByUserId: 'admin',
+    recordedByUserName: 'Yograj Walture'
+  }
+];
+
+export const INITIAL_STAFF_ATTENDANCE: StaffAttendanceRecord[] = [
+  {
+    id: 'ATT_F-1001_amit_counter_20260824',
+    firmId: 'F-1001',
+    staffId: 'amit_counter',
+    staffName: 'Amit Counter Staff',
+    staffMobile: '9876543211',
+    role: 'Counter Staff',
+    date: '2026-08-24',
+    shiftType: 'Morning',
+    status: 'Present',
+    checkInTime: '09:00',
+    checkOutTime: '17:30',
+    totalHours: 8.5,
+    overtimeHours: 0.5,
+    notes: 'Main counter sales and cash desk duty',
+    recordedByUserId: 'admin',
+    recordedByUserName: 'Yograj Walture'
+  },
+  {
+    id: 'ATT_F-1001_rahul_pharma_20260824',
+    firmId: 'F-1001',
+    staffId: 'rahul_pharma',
+    staffName: 'Rahul Pharmacist',
+    staffMobile: '9811223344',
+    role: 'Senior Pharmacist',
+    date: '2026-08-24',
+    shiftType: 'Morning',
+    status: 'Present',
+    checkInTime: '09:15',
+    notes: 'Prescription dispensing and medicine verification',
+    recordedByUserId: 'admin',
+    recordedByUserName: 'Yograj Walture'
+  },
+  {
+    id: 'ATT_F-1001_suresh_helper_20260824',
+    firmId: 'F-1001',
+    staffId: 'suresh_helper',
+    staffName: 'Suresh Store Assistant',
+    staffMobile: '9765432100',
+    role: 'Store Assistant',
+    date: '2026-08-24',
+    shiftType: 'Full Day',
+    status: 'Present',
+    checkInTime: '10:00',
+    notes: 'Stock arrangement and supplier delivery check',
+    recordedByUserId: 'admin',
+    recordedByUserName: 'Yograj Walture'
+  }
+];
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState<Page>(() => {
@@ -465,7 +630,77 @@ export default function App() {
     localStorage.setItem('shopbooks_customers', JSON.stringify(customers));
   }, [customers]);
 
-  const isMainPage = currentPage === 'dashboard' || currentPage === 'credit';
+  const [cashlessClaims, setCashlessClaimsState] = useState<CashlessClaim[]>(() => {
+    const saved = localStorage.getItem('shopbooks_cashless_claims');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed && parsed.length > 0) return parsed;
+      } catch (e) {}
+    }
+    return INITIAL_CASHLESS_CLAIMS;
+  });
+
+  const setCashlessClaims = useCallback((nextVal: CashlessClaim[] | ((prev: CashlessClaim[]) => CashlessClaim[])) => {
+    setCashlessClaimsState(prev => {
+      const next = typeof nextVal === 'function' ? nextVal(prev) : nextVal;
+      const prevIds = new Set(prev.map(c => c.id));
+      const nextIds = new Set(next.map(c => c.id));
+      next.forEach(c => {
+        const oldC = prev.find(p => p.id === c.id);
+        if (!oldC || JSON.stringify(oldC) !== JSON.stringify(c)) {
+          dbSaveCashlessClaim(c);
+        }
+      });
+      prev.forEach(c => {
+        if (!nextIds.has(c.id)) {
+          dbDeleteCashlessClaim(c.id);
+        }
+      });
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('shopbooks_cashless_claims', JSON.stringify(cashlessClaims));
+  }, [cashlessClaims]);
+
+  const [staffAttendance, setStaffAttendanceState] = useState<StaffAttendanceRecord[]>(() => {
+    const saved = localStorage.getItem('shopbooks_staff_attendance');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed && parsed.length > 0) return parsed;
+      } catch (e) {}
+    }
+    return INITIAL_STAFF_ATTENDANCE;
+  });
+
+  const setStaffAttendance = useCallback((nextVal: StaffAttendanceRecord[] | ((prev: StaffAttendanceRecord[]) => StaffAttendanceRecord[])) => {
+    setStaffAttendanceState(prev => {
+      const next = typeof nextVal === 'function' ? nextVal(prev) : nextVal;
+      const prevIds = new Set(prev.map(a => a.id));
+      const nextIds = new Set(next.map(a => a.id));
+      next.forEach(a => {
+        const oldA = prev.find(p => p.id === a.id);
+        if (!oldA || JSON.stringify(oldA) !== JSON.stringify(a)) {
+          dbSaveStaffAttendance(a);
+        }
+      });
+      prev.forEach(a => {
+        if (!nextIds.has(a.id)) {
+          dbDeleteStaffAttendance(a.id);
+        }
+      });
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('shopbooks_staff_attendance', JSON.stringify(staffAttendance));
+  }, [staffAttendance]);
+
+  const isMainPage = currentPage === 'dashboard' || currentPage === 'credit' || currentPage === 'cashlessPatient' || currentPage === 'creditReminders' || currentPage === 'monthlyReport';
   const isAuthPage = currentPage === 'welcome' || currentPage === 'login' || currentPage === 'registerFirm';
   const isAdminPage = currentPage === 'firmAdmin' || currentPage === 'masterAdmin';
   
@@ -610,6 +845,8 @@ export default function App() {
   const [custLoaded, setCustLoaded] = useState(false);
   const [regLoaded, setRegLoaded] = useState(false);
   const [handoversLoaded, setHandoversLoaded] = useState(false);
+  const [cashlessLoaded, setCashlessLoaded] = useState(false);
+  const [staffAttendanceLoaded, setStaffAttendanceLoaded] = useState(false);
 
   const firmsRef = React.useRef(firms);
   const transactionsRef = React.useRef(transactions);
@@ -617,6 +854,8 @@ export default function App() {
   const customersRef = React.useRef(customers);
   const firmDailyRegistersRef = React.useRef(firmDailyRegisters);
   const handoversRef = React.useRef(handovers);
+  const cashlessClaimsRef = React.useRef(cashlessClaims);
+  const staffAttendanceRef = React.useRef(staffAttendance);
 
   useEffect(() => { firmsRef.current = firms; }, [firms]);
   useEffect(() => { transactionsRef.current = transactions; }, [transactions]);
@@ -624,14 +863,16 @@ export default function App() {
   useEffect(() => { customersRef.current = customers; }, [customers]);
   useEffect(() => { firmDailyRegistersRef.current = firmDailyRegisters; }, [firmDailyRegisters]);
   useEffect(() => { handoversRef.current = handovers; }, [handovers]);
+  useEffect(() => { cashlessClaimsRef.current = cashlessClaims; }, [cashlessClaims]);
+  useEffect(() => { staffAttendanceRef.current = staffAttendance; }, [staffAttendance]);
 
   const [isFirebaseLoading, setIsFirebaseLoading] = useState(true);
 
   useEffect(() => {
-    if (firmsLoaded && txLoaded && deletedTxLoaded && custLoaded && regLoaded && handoversLoaded) {
+    if (firmsLoaded && txLoaded && deletedTxLoaded && custLoaded && regLoaded && handoversLoaded && cashlessLoaded && staffAttendanceLoaded) {
       setIsFirebaseLoading(false);
     }
-  }, [firmsLoaded, txLoaded, deletedTxLoaded, custLoaded, regLoaded, handoversLoaded]);
+  }, [firmsLoaded, txLoaded, deletedTxLoaded, custLoaded, regLoaded, handoversLoaded, cashlessLoaded, staffAttendanceLoaded]);
 
   // Daily Auto-Backup hook
   useEffect(() => {
@@ -703,10 +944,12 @@ export default function App() {
       }
     });
 
-    // 2. Set up real-time firebase listeners and bi-directional merge
+    // 2. Set up real-time firebase listeners and merge with local state
     const unsubFirms = dbSubscribeFirms((fList) => {
       if (fList.length === 0) {
-        dbSaveFirm(SEEDED_DEFAULT_FIRM);
+        if (firmsRef.current.length === 0) {
+          dbSaveFirm(SEEDED_DEFAULT_FIRM);
+        }
         return;
       }
       const mappedFList = fList.map((f: Firm) => {
@@ -739,7 +982,6 @@ export default function App() {
       const mergedFirms = [...mappedFList];
       for (const f of firmsRef.current) {
         if (!cloudFirmsMap.has(f.id)) {
-          dbSaveFirm(f);
           mergedFirms.push(f);
         }
       }
@@ -754,7 +996,6 @@ export default function App() {
       const mergedTx = [...txList];
       for (const t of transactionsRef.current) {
         if (!cloudTxMap.has(t.id)) {
-          dbSaveTransaction(t);
           mergedTx.push(t);
         }
       }
@@ -769,7 +1010,6 @@ export default function App() {
       const mergedCust = [...cList];
       for (const c of customersRef.current) {
         if (!cloudCustMap.has(c.id)) {
-          dbSaveCustomer(c);
           mergedCust.push(c);
         }
       }
@@ -784,7 +1024,6 @@ export default function App() {
       const mergedRegisters = { ...rListSafe };
       for (const [key, reg] of Object.entries(firmDailyRegistersRef.current)) {
         if (!(key in rListSafe)) {
-          dbSaveDailyRegister(key, reg);
           mergedRegisters[key] = reg;
         }
       }
@@ -799,7 +1038,6 @@ export default function App() {
       const mergedHandovers = [...hList];
       for (const h of handoversRef.current) {
         if (!cloudHandoversMap.has(h.id)) {
-          dbSaveHandover(h);
           mergedHandovers.push(h);
         }
       }
@@ -814,7 +1052,6 @@ export default function App() {
       const mergedDelTx = [...deletedTxList];
       for (const t of deletedTransactionsRef.current) {
         if (!cloudDelTxMap.has(t.id)) {
-          dbSaveDeletedTransaction(t);
           mergedDelTx.push(t);
         }
       }
@@ -822,6 +1059,34 @@ export default function App() {
       setDeletedTxLoaded(true);
     }, (err) => {
       setDeletedTxLoaded(true);
+    });
+
+    const unsubCashless = dbSubscribeCashlessClaims((claimsList) => {
+      const cloudClaimsMap = new Map(claimsList.map(c => [c.id, c]));
+      const mergedClaims = [...claimsList];
+      for (const c of cashlessClaimsRef.current) {
+        if (!cloudClaimsMap.has(c.id)) {
+          mergedClaims.push(c);
+        }
+      }
+      setCashlessClaimsState(mergedClaims);
+      setCashlessLoaded(true);
+    }, (err) => {
+      setCashlessLoaded(true);
+    });
+
+    const unsubAttendance = dbSubscribeStaffAttendance((attendanceList) => {
+      const cloudAttMap = new Map(attendanceList.map(a => [a.id, a]));
+      const mergedAttendance = [...attendanceList];
+      for (const a of staffAttendanceRef.current) {
+        if (!cloudAttMap.has(a.id)) {
+          mergedAttendance.push(a);
+        }
+      }
+      setStaffAttendanceState(mergedAttendance);
+      setStaffAttendanceLoaded(true);
+    }, (err) => {
+      setStaffAttendanceLoaded(true);
     });
 
     return () => {
@@ -832,6 +1097,8 @@ export default function App() {
       unsubCustomers();
       unsubRegisters();
       unsubHandovers();
+      unsubCashless();
+      unsubAttendance();
     };
   }, []);
 
@@ -1143,6 +1410,14 @@ export default function App() {
     setCurrentPage('welcome');
   };
 
+  const handleSwitchUserProfile = (user: { id: string; name: string; role: string; mobile: string }) => {
+    setCurrentUser(user);
+    const isAdmin = user.role === 'Firm Admin' || user.role === 'Master Admin' || user.id === 'master_super_admin';
+    setUserRole(isAdmin ? 'firmAdmin' : 'user');
+    localStorage.setItem('shopbooks_current_user', JSON.stringify(user));
+    localStorage.setItem('shopbooks_user_role', isAdmin ? 'firmAdmin' : 'user');
+  };
+
   const handleConfirmHandover = (
     toUser: { id: string; name: string },
     notes: string,
@@ -1222,6 +1497,11 @@ export default function App() {
             onClearAllData={handleClearAllData}
             onOpenSettings={() => setIsPosSettingsOpen(true)}
             onOpenHandover={() => setIsHandoverModalOpen(true)}
+            customers={customers}
+            transactions={transactions}
+            currentFirmId={currentFirmId}
+            onSelectCustomer={setSelectedCustomerId}
+            onSwitchUser={handleSwitchUserProfile}
           />
           <MobileHeader 
             activeFirm={firms.find(f => f.id === currentFirmId)} 
@@ -1234,6 +1514,7 @@ export default function App() {
             transactions={transactions}
             currentFirmId={currentFirmId}
             onSelectCustomer={setSelectedCustomerId}
+            onSwitchUser={handleSwitchUserProfile}
           />
         </>
       )}
@@ -1254,6 +1535,22 @@ export default function App() {
           firmDailyRegisters={firmDailyRegisters}
           setFirmDailyRegisters={setFirmDailyRegisters}
           workingDate={workingDate}
+          currentUser={currentUser}
+          staffAttendance={staffAttendance}
+          onSaveStaffAttendance={(record) => {
+            setStaffAttendance(prev => {
+              const idx = prev.findIndex(p => p.id === record.id);
+              if (idx >= 0) {
+                const copy = [...prev];
+                copy[idx] = record;
+                return copy;
+              }
+              return [record, ...prev];
+            });
+          }}
+          onDeleteStaffAttendance={(recordId) => {
+            setStaffAttendance(prev => prev.filter(r => r.id !== recordId));
+          }}
         />
       )}
       {currentPage === 'masterAdmin' && (
@@ -1661,6 +1958,64 @@ export default function App() {
           transactions={transactions}
           currentFirmId={currentFirmId}
           firms={firms}
+        />
+      )}
+      {currentPage === 'cashlessPatient' && (
+        <CashlessPatientScreen 
+          onBack={() => setCurrentPage('dashboard')}
+          onNavigate={(page) => setCurrentPage(page)}
+          currentFirmId={currentFirmId}
+          currentUser={currentUser}
+          activeFirm={firms.find(f => f.id === currentFirmId)}
+          cashlessClaims={cashlessClaims}
+          customers={customers}
+          workingDate={workingDate}
+          onSaveClaim={(claim) => {
+            setCashlessClaims(prev => [claim, ...prev]);
+          }}
+          onUpdateClaim={(claim) => {
+            setCashlessClaims(prev => {
+              const existingIdx = prev.findIndex(c => c.id === claim.id);
+              if (existingIdx >= 0) {
+                const next = [...prev];
+                next[existingIdx] = claim;
+                return next;
+              }
+              return [claim, ...prev];
+            });
+          }}
+          onDeleteClaim={(claimId) => {
+            setCashlessClaims(prev => prev.filter(c => c.id !== claimId));
+          }}
+        />
+      )}
+      {currentPage === 'creditReminders' && (
+        <CreditRemindersScreen 
+          onBack={() => setCurrentPage('credit')}
+          customers={customers}
+          transactions={transactions}
+          currentFirmId={currentFirmId}
+          activeFirm={firms.find(f => f.id === currentFirmId)}
+          currentUser={currentUser}
+          onSelectCustomer={(customerId) => {
+            setSelectedCustomerId(customerId);
+            setCurrentPage('customerLedger');
+          }}
+          onNavigate={(page) => setCurrentPage(page)}
+        />
+      )}
+      {currentPage === 'monthlyReport' && (
+        <MonthlyReportScreen 
+          onBack={() => setCurrentPage('dashboard')}
+          onNavigate={(page) => setCurrentPage(page)}
+          currentFirmId={currentFirmId}
+          activeFirm={firms.find(f => f.id === currentFirmId)}
+          currentUser={currentUser}
+          transactions={transactions}
+          customers={customers}
+          cashlessClaims={cashlessClaims}
+          dailyRegisters={firmDailyRegisters}
+          workingDate={workingDate}
         />
       )}
 
@@ -2749,43 +3104,65 @@ function Dashboard({
 function QuickActions({ onNavigate }: { onNavigate: (page: Page) => void }) {
   return (
     <section>
-      <h2 className="text-headline-md text-on-surface mb-stack-md">Quick Actions</h2>
-      <div className="grid grid-cols-3 sm:grid-cols-6 gap-gutter">
-        <button onClick={() => onNavigate('credit')} className="flex flex-col items-center gap-2 cursor-pointer">
-          <div className="w-14 h-14 bg-error-container/30 rounded-xl flex items-center justify-center text-error shadow-[0_4px_20px_rgba(0,0,0,0.04)] active:scale-95 transition-transform">
-            <FileText className="w-7 h-7" />
+      <div className="flex items-center justify-between mb-stack-md">
+        <h2 className="text-headline-md text-on-surface">Quick Action Shortcuts</h2>
+        <span className="text-xs text-on-surface-variant font-medium">1-Click Fast Entry</span>
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
+        <button onClick={() => onNavigate('credit')} className="flex flex-col items-center gap-2 p-2 rounded-xl bg-surface-container-lowest border border-outline-variant/30 hover:border-error/50 hover:bg-error/5 transition-all cursor-pointer group shadow-2xs">
+          <div className="w-12 h-12 bg-error-container/30 rounded-xl flex items-center justify-center text-error shadow-[0_4px_20px_rgba(0,0,0,0.04)] group-active:scale-95 transition-transform">
+            <FileText className="w-6 h-6" />
           </div>
-          <span className="text-label-md text-center text-on-surface text-[12px] leading-tight">Add Credit Sale</span>
+          <span className="text-label-md text-center text-on-surface text-[11px] font-bold leading-tight">Add Credit Sale</span>
         </button>
-        <button onClick={() => onNavigate('schemeCreditSale')} className="flex flex-col items-center gap-2 cursor-pointer">
-          <div className="w-14 h-14 bg-surface-container-lowest rounded-xl flex items-center justify-center text-on-surface-variant shadow-[0_4px_20px_rgba(0,0,0,0.04)] active:scale-95 transition-transform">
-            <ShieldPlus className="w-7 h-7 text-secondary" />
+
+        <button onClick={() => onNavigate('receivePayment')} className="flex flex-col items-center gap-2 p-2 rounded-xl bg-surface-container-lowest border border-outline-variant/30 hover:border-teal-500/50 hover:bg-teal-500/5 transition-all cursor-pointer group shadow-2xs">
+          <div className="w-12 h-12 bg-teal-500/10 rounded-xl flex items-center justify-center text-teal-600 shadow-[0_4px_20px_rgba(0,0,0,0.04)] group-active:scale-95 transition-transform">
+            <QrCode className="w-6 h-6" />
           </div>
-          <span className="text-label-md text-center text-on-surface text-[12px] leading-tight">Scheme Bill</span>
+          <span className="text-label-md text-center text-on-surface text-[11px] font-bold leading-tight">Collect Payment</span>
         </button>
-        <button onClick={() => onNavigate('receivePayment')} className="flex flex-col items-center gap-2 cursor-pointer">
-          <div className="w-14 h-14 bg-surface-container-lowest rounded-xl flex items-center justify-center text-secondary shadow-[0_4px_20px_rgba(0,0,0,0.04)] active:scale-95 transition-transform">
-            <QrCode className="w-7 h-7" />
+
+        <button onClick={() => onNavigate('cashlessPatient')} className="flex flex-col items-center gap-2 p-2 rounded-xl bg-surface-container-lowest border border-outline-variant/30 hover:border-indigo-500/50 hover:bg-indigo-500/5 transition-all cursor-pointer group shadow-2xs">
+          <div className="w-12 h-12 bg-indigo-500/10 rounded-xl flex items-center justify-center text-indigo-600 shadow-[0_4px_20px_rgba(0,0,0,0.04)] group-active:scale-95 transition-transform">
+            <ShieldPlus className="w-6 h-6" />
           </div>
-          <span className="text-label-md text-center text-on-surface text-[12px] leading-tight">Online Payment</span>
+          <span className="text-label-md text-center text-on-surface text-[11px] font-bold leading-tight">Cashless Claims</span>
         </button>
-        <button onClick={() => onNavigate('receiveCashPayment')} className="flex flex-col items-center gap-2 cursor-pointer">
-          <div className="w-14 h-14 bg-surface-container-lowest rounded-xl flex items-center justify-center text-green-600 shadow-[0_4px_20px_rgba(0,0,0,0.04)] active:scale-95 transition-transform">
-            <Coins className="w-7 h-7" />
+
+        <button onClick={() => onNavigate('creditReminders')} className="flex flex-col items-center gap-2 p-2 rounded-xl bg-surface-container-lowest border border-outline-variant/30 hover:border-amber-500/50 hover:bg-amber-500/5 transition-all cursor-pointer group shadow-2xs">
+          <div className="w-12 h-12 bg-amber-500/10 rounded-xl flex items-center justify-center text-amber-600 shadow-[0_4px_20px_rgba(0,0,0,0.04)] group-active:scale-95 transition-transform">
+            <BellRing className="w-6 h-6" />
           </div>
-          <span className="text-label-md text-center text-on-surface text-[12px] leading-tight">Cash Payment</span>
+          <span className="text-label-md text-center text-on-surface text-[11px] font-bold leading-tight">Credit Reminders</span>
         </button>
-        <button onClick={() => onNavigate('supplierPayment')} className="flex flex-col items-center gap-2 cursor-pointer">
-          <div className="w-14 h-14 bg-surface-container-lowest rounded-xl flex items-center justify-center text-on-surface-variant shadow-[0_4px_20px_rgba(0,0,0,0.04)] active:scale-95 transition-transform">
-            <Truck className="w-7 h-7" />
+
+        <button onClick={() => onNavigate('monthlyReport')} className="flex flex-col items-center gap-2 p-2 rounded-xl bg-surface-container-lowest border border-outline-variant/30 hover:border-blue-500/50 hover:bg-blue-500/5 transition-all cursor-pointer group shadow-2xs">
+          <div className="w-12 h-12 bg-blue-500/10 rounded-xl flex items-center justify-center text-blue-600 shadow-[0_4px_20px_rgba(0,0,0,0.04)] group-active:scale-95 transition-transform">
+            <BarChart2 className="w-6 h-6" />
           </div>
-          <span className="text-label-md text-center text-on-surface text-[12px] leading-tight">Supplier Payment</span>
+          <span className="text-label-md text-center text-on-surface text-[11px] font-bold leading-tight">Monthly Reports</span>
         </button>
-        <button onClick={() => onNavigate('expense')} className="flex flex-col items-center gap-2 cursor-pointer">
-          <div className="w-14 h-14 bg-rose-100 dark:bg-rose-950/40 rounded-xl flex items-center justify-center text-rose-600 shadow-[0_4px_20px_rgba(0,0,0,0.04)] active:scale-95 transition-transform border border-rose-200/40">
-            <TrendingUp className="w-7 h-7 rotate-180 text-rose-600" />
+
+        <button onClick={() => onNavigate('receiveCashPayment')} className="flex flex-col items-center gap-2 p-2 rounded-xl bg-surface-container-lowest border border-outline-variant/30 hover:border-emerald-500/50 hover:bg-emerald-500/5 transition-all cursor-pointer group shadow-2xs">
+          <div className="w-12 h-12 bg-emerald-500/10 rounded-xl flex items-center justify-center text-emerald-600 shadow-[0_4px_20px_rgba(0,0,0,0.04)] group-active:scale-95 transition-transform">
+            <Coins className="w-6 h-6" />
           </div>
-          <span className="text-label-md text-center text-on-surface text-[12px] leading-tight">Record Expense</span>
+          <span className="text-label-md text-center text-on-surface text-[11px] font-bold leading-tight">Cash Payment</span>
+        </button>
+
+        <button onClick={() => onNavigate('supplierPayment')} className="flex flex-col items-center gap-2 p-2 rounded-xl bg-surface-container-lowest border border-outline-variant/30 hover:border-purple-500/50 hover:bg-purple-500/5 transition-all cursor-pointer group shadow-2xs">
+          <div className="w-12 h-12 bg-purple-500/10 rounded-xl flex items-center justify-center text-purple-600 shadow-[0_4px_20px_rgba(0,0,0,0.04)] group-active:scale-95 transition-transform">
+            <Truck className="w-6 h-6" />
+          </div>
+          <span className="text-label-md text-center text-on-surface text-[11px] font-bold leading-tight">Supplier Payment</span>
+        </button>
+
+        <button onClick={() => onNavigate('expense')} className="flex flex-col items-center gap-2 p-2 rounded-xl bg-surface-container-lowest border border-outline-variant/30 hover:border-rose-500/50 hover:bg-rose-500/5 transition-all cursor-pointer group shadow-2xs">
+          <div className="w-12 h-12 bg-rose-500/10 rounded-xl flex items-center justify-center text-rose-600 shadow-[0_4px_20px_rgba(0,0,0,0.04)] group-active:scale-95 transition-transform">
+            <TrendingUp className="w-6 h-6 rotate-180" />
+          </div>
+          <span className="text-label-md text-center text-on-surface text-[11px] font-bold leading-tight">Record Expense</span>
         </button>
       </div>
     </section>
@@ -3117,67 +3494,184 @@ function ExpenseScreen({
   );
 }
 
-function SideNav({ onNavigate, activePage, userRole, onLogout, activeFirm, currentUser, onClearAllData, onOpenSettings, onOpenHandover }: { onNavigate: (page: Page) => void, activePage: Page, userRole?: 'user' | 'firmAdmin', onLogout?: () => void, activeFirm?: Firm, currentUser?: any, onClearAllData?: () => void, onOpenSettings?: () => void, onOpenHandover?: () => void }) {
+function SideNav({ 
+  onNavigate, 
+  activePage, 
+  userRole, 
+  onLogout, 
+  activeFirm, 
+  currentUser, 
+  onClearAllData, 
+  onOpenSettings, 
+  onOpenHandover,
+  customers = [],
+  transactions = [],
+  currentFirmId = '',
+  onSelectCustomer,
+  onSwitchUser
+}: { 
+  onNavigate: (page: Page) => void, 
+  activePage: Page, 
+  userRole?: 'user' | 'firmAdmin', 
+  onLogout?: () => void, 
+  activeFirm?: Firm, 
+  currentUser?: any, 
+  onClearAllData?: () => void, 
+  onOpenSettings?: () => void, 
+  onOpenHandover?: () => void,
+  customers?: Customer[],
+  transactions?: Transaction[],
+  currentFirmId?: string,
+  onSelectCustomer?: (id: string | null) => void,
+  onSwitchUser?: (user: { id: string; name: string; role: string; mobile: string }) => void
+}) {
+  const [showSwitchMenu, setShowSwitchMenu] = useState(false);
+
+  const allFirmUsers = useMemo(() => {
+    if (!activeFirm) return [];
+    const ownerUser = {
+      id: `admin_${activeFirm.id}`,
+      name: activeFirm.adminName || 'Firm Owner',
+      role: 'Firm Admin',
+      mobile: activeFirm.mobile || ''
+    };
+    const staffList = (activeFirm.users || []).map(u => ({
+      id: u.id,
+      name: u.name,
+      role: u.role || 'Counter Staff',
+      mobile: u.mobile || ''
+    }));
+
+    // Combine owner + staff, deduplicating by id
+    const combined = [ownerUser];
+    for (const s of staffList) {
+      if (!combined.some(c => c.id === s.id)) {
+        combined.push(s);
+      }
+    }
+    return combined;
+  }, [activeFirm]);
+
   return (
     <nav className="hidden md:flex flex-col fixed left-0 top-0 h-full w-[280px] bg-surface-container-lowest border-r border-outline-variant z-50">
-      <div className="p-6">
+      <div className="p-5 flex justify-between items-center border-b border-outline-variant/30">
         <span className="text-headline-md text-primary font-bold">ShopBooks</span>
+        {onNavigate && onSelectCustomer && (
+          <CollectionNotificationCenter 
+            customers={customers}
+            transactions={transactions}
+            currentFirmId={currentFirmId}
+            activeFirm={activeFirm}
+            onNavigate={onNavigate}
+            onSelectCustomer={onSelectCustomer}
+          />
+        )}
       </div>
-      <div className="flex flex-col gap-2 px-4 mt-4 flex-1">
-        <button onClick={() => onNavigate('dashboard')} className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors duration-200 ${activePage === 'dashboard' ? 'bg-secondary-container text-on-secondary-container' : 'text-on-surface-variant hover:bg-surface-container-low'}`}>
-          <Home className="w-6 h-6" />
-          <span className="text-label-md">Home</span>
+      <div className="flex flex-col gap-2 px-4 mt-4 flex-1 overflow-y-auto">
+        <button onClick={() => onNavigate('dashboard')} className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors duration-200 ${activePage === 'dashboard' ? 'bg-secondary-container text-on-secondary-container font-bold' : 'text-on-surface-variant hover:bg-surface-container-low'}`}>
+          <Home className="w-5 h-5" />
+          <span className="text-label-md">Dashboard</span>
         </button>
-        <button onClick={() => onNavigate('credit')} className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors duration-200 ${activePage === 'credit' ? 'bg-secondary-container text-on-secondary-container' : 'text-on-surface-variant hover:bg-surface-container-low'}`}>
-          <Wallet className="w-6 h-6" />
-          <span className="text-label-md">Credit</span>
+        <button onClick={() => onNavigate('credit')} className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors duration-200 ${activePage === 'credit' ? 'bg-secondary-container text-on-secondary-container font-bold' : 'text-on-surface-variant hover:bg-surface-container-low'}`}>
+          <Wallet className="w-5 h-5" />
+          <span className="text-label-md">Credit Sales</span>
+        </button>
+        <button onClick={() => onNavigate('cashlessPatient')} className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors duration-200 ${activePage === 'cashlessPatient' ? 'bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 font-bold border border-indigo-500/30' : 'text-on-surface-variant hover:bg-surface-container-low'}`}>
+          <ShieldPlus className="w-5 h-5 text-indigo-600" />
+          <div className="flex flex-col text-left">
+            <span className="text-label-md">Cashless Patients</span>
+            <span className="text-[10px] text-on-surface-variant/80 font-normal">MJPJAY & Insurance</span>
+          </div>
+        </button>
+        <button onClick={() => onNavigate('creditReminders')} className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors duration-200 ${activePage === 'creditReminders' ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300 font-bold border border-amber-500/30' : 'text-on-surface-variant hover:bg-surface-container-low'}`}>
+          <BellRing className="w-5 h-5 text-amber-600" />
+          <span className="text-label-md">Daily Reminders</span>
+        </button>
+        <button onClick={() => onNavigate('monthlyReport')} className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors duration-200 ${activePage === 'monthlyReport' ? 'bg-blue-500/15 text-blue-700 dark:text-blue-300 font-bold border border-blue-500/30' : 'text-on-surface-variant hover:bg-surface-container-low'}`}>
+          <BarChart2 className="w-5 h-5 text-blue-600" />
+          <span className="text-label-md">Monthly Reports</span>
         </button>
         <button onClick={onOpenSettings} className="flex items-center gap-3 px-4 py-3 rounded-lg transition-colors duration-200 text-on-surface-variant hover:bg-surface-container-low">
-          <Settings className="w-6 h-6" />
+          <Settings className="w-5 h-5" />
           <span className="text-label-md">Settings</span>
         </button>
         {userRole === 'firmAdmin' && (
-          <button onClick={() => onNavigate('firmAdmin')} className="flex items-center gap-3 px-4 py-3 rounded-lg transition-colors duration-200 text-on-surface-variant hover:bg-surface-container-low mt-4 border border-outline-variant/50">
-            <ShieldPlus className="w-6 h-6 text-primary" />
+          <button onClick={() => onNavigate('firmAdmin')} className="flex items-center gap-3 px-4 py-3 rounded-lg transition-colors duration-200 text-on-surface-variant hover:bg-surface-container-low mt-2 border border-outline-variant/50">
+            <ShieldPlus className="w-5 h-5 text-primary" />
             <span className="text-label-md text-primary">Admin Portal</span>
           </button>
         )}
         {currentUser?.id === 'master_super_admin' && (
           <button onClick={() => onNavigate('masterAdmin')} className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors duration-200 mt-2 border border-primary/30 ${activePage === 'masterAdmin' ? 'bg-primary/20 text-primary' : 'text-primary hover:bg-primary/10'}`}>
-            <ShieldAlert className="w-6 h-6 text-primary animate-pulse" />
+            <ShieldAlert className="w-5 h-5 text-primary animate-pulse" />
             <span className="text-label-md text-primary font-bold">Master Console</span>
           </button>
         )}
       </div>
-      <div className="p-4 border-t border-outline-variant space-y-4">
+
+      <div className="p-4 border-t border-outline-variant space-y-3">
         {activeFirm && currentUser && (
           <div className="bg-surface-container-low p-3 rounded-xl border border-outline-variant/30 text-left">
             <p className="text-[10px] font-bold uppercase tracking-wider text-primary">Active Firm</p>
             <p className="text-sm font-semibold text-on-surface truncate">{activeFirm.name}</p>
-            <p className="text-xs text-on-surface-variant font-mono">ID: {activeFirm.id}</p>
             
-            <div className="mt-2.5 pt-2 border-t border-outline-variant/50">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-secondary">Logged In As</p>
-              <p className="text-sm font-semibold text-on-surface truncate">{currentUser.name}</p>
+            <div className="mt-2 pt-2 border-t border-outline-variant/50">
+              <div className="flex items-center justify-between">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-secondary">Active Profile</p>
+                {allFirmUsers.length > 1 && onSwitchUser && (
+                  <button 
+                    onClick={() => setShowSwitchMenu(!showSwitchMenu)}
+                    className="text-[10px] font-bold text-primary hover:underline cursor-pointer flex items-center gap-1"
+                  >
+                    <span>Switch Profile</span>
+                    <RefreshCw className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+              <p className="text-sm font-semibold text-on-surface truncate mt-0.5">{currentUser.name}</p>
               <p className="text-xs text-on-surface-variant truncate italic">{currentUser.role}</p>
+
+              {/* Collapsible Profile Switcher */}
+              {showSwitchMenu && allFirmUsers.length > 0 && onSwitchUser && (
+                <div className="mt-2 pt-2 border-t border-outline-variant/40 space-y-1.5 max-h-40 overflow-y-auto">
+                  <p className="text-[9px] font-bold uppercase text-on-surface-variant">Select Profile:</p>
+                  {allFirmUsers.map((u) => {
+                    const isActive = u.id === currentUser.id || u.name === currentUser.name;
+                    return (
+                      <button
+                        key={u.id}
+                        onClick={() => {
+                          onSwitchUser(u);
+                          setShowSwitchMenu(false);
+                        }}
+                        className={`w-full text-left p-1.5 rounded-lg text-xs flex items-center justify-between transition-all cursor-pointer ${isActive ? 'bg-primary text-on-primary font-bold' : 'bg-surface-bright hover:bg-surface-container-high text-on-surface'}`}
+                      >
+                        <span className="truncate">{u.name}</span>
+                        <span className="text-[9px] opacity-80 shrink-0 ml-1">({u.role})</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
         )}
+
         {onClearAllData && (
-          <button onClick={onClearAllData} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors duration-200 text-amber-600 hover:bg-amber-500/10 border border-amber-500/10 shrink-0">
-            <Trash2 className="w-6 h-6 text-amber-500" />
-            <span className="text-label-md">Erase Demo Data</span>
+          <button onClick={onClearAllData} className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg transition-colors duration-200 text-amber-600 hover:bg-amber-500/10 border border-amber-500/10 shrink-0 text-xs font-bold">
+            <Trash2 className="w-4.5 h-4.5 text-amber-500" />
+            <span>Erase Demo Data</span>
           </button>
         )}
         {onOpenHandover && (
-          <button onClick={onOpenHandover} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors duration-200 text-secondary hover:bg-secondary/10 border border-secondary/20 shrink-0">
-            <ArrowLeftRight className="w-6 h-6 text-secondary" />
-            <span className="text-label-md">Handover Shift</span>
+          <button onClick={onOpenHandover} className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg transition-colors duration-200 text-secondary hover:bg-secondary/10 border border-secondary/20 shrink-0 text-xs font-bold">
+            <ArrowLeftRight className="w-4.5 h-4.5 text-secondary" />
+            <span>Handover Shift</span>
           </button>
         )}
-        <button onClick={onLogout} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors duration-200 text-error hover:bg-error-container/20">
-          <LogOut className="w-6 h-6" />
-          <span className="text-label-md">Logout</span>
+        <button onClick={onLogout} className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg transition-colors duration-200 text-error hover:bg-error-container/20 text-xs font-bold">
+          <LogOut className="w-4.5 h-4.5" />
+          <span>Logout</span>
         </button>
       </div>
     </nav>
@@ -3194,7 +3688,8 @@ function MobileHeader({
   customers = [],
   transactions = [],
   currentFirmId = '',
-  onSelectCustomer
+  onSelectCustomer,
+  onSwitchUser
 }: { 
   activeFirm?: Firm, 
   currentUser?: any, 
@@ -3205,9 +3700,34 @@ function MobileHeader({
   customers?: Customer[],
   transactions?: Transaction[],
   currentFirmId?: string,
-  onSelectCustomer?: (id: string | null) => void
+  onSelectCustomer?: (id: string | null) => void,
+  onSwitchUser?: (user: { id: string; name: string; role: string; mobile: string }) => void
 }) {
   const [showProfile, setShowProfile] = useState(false);
+
+  const allFirmUsers = useMemo(() => {
+    if (!activeFirm) return [];
+    const ownerUser = {
+      id: `admin_${activeFirm.id}`,
+      name: activeFirm.adminName || 'Firm Owner',
+      role: 'Firm Admin',
+      mobile: activeFirm.mobile || ''
+    };
+    const staffList = (activeFirm.users || []).map(u => ({
+      id: u.id,
+      name: u.name,
+      role: u.role || 'Counter Staff',
+      mobile: u.mobile || ''
+    }));
+
+    const combined = [ownerUser];
+    for (const s of staffList) {
+      if (!combined.some(c => c.id === s.id)) {
+        combined.push(s);
+      }
+    }
+    return combined;
+  }, [activeFirm]);
 
   return (
     <header className="w-full top-0 sticky bg-surface-container-lowest flex justify-between items-center px-container-padding-mobile h-16 md:hidden z-40 shadow-[0_4px_20px_rgba(0,0,0,0.04)] border-b border-outline-variant">
@@ -3236,7 +3756,7 @@ function MobileHeader({
       {/* Profile Dialog */}
       {showProfile && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-surface-container-lowest border border-outline-variant rounded-2xl w-full max-w-sm p-6 shadow-2xl relative">
+          <div className="bg-surface-container-lowest border border-outline-variant rounded-2xl w-full max-w-sm p-6 shadow-2xl relative max-h-[90vh] overflow-y-auto">
             <button 
               onClick={() => setShowProfile(false)}
               className="absolute top-4 right-4 text-on-surface-variant hover:bg-surface-container-low p-1.5 rounded-full cursor-pointer"
@@ -3253,30 +3773,49 @@ function MobileHeader({
               </div>
             </div>
 
-            <div className="space-y-4 text-left">
-              <div className="bg-surface-container-low p-4 rounded-xl border border-outline-variant/30">
+            <div className="space-y-3 text-left">
+              <div className="bg-surface-container-low p-3.5 rounded-xl border border-outline-variant/30">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-primary">Firm Details</p>
-                <p className="text-sm font-semibold text-on-surface mt-1">{activeFirm?.name}</p>
+                <p className="text-sm font-semibold text-on-surface mt-0.5">{activeFirm?.name}</p>
                 <p className="text-xs text-on-surface-variant">ID: {activeFirm?.id}</p>
-                <p className="text-xs text-on-surface-variant">Email: {activeFirm?.email}</p>
-                <p className="text-xs text-on-surface-variant">Mobile: {activeFirm?.mobile}</p>
               </div>
 
-              <div className="bg-surface-container-low p-4 rounded-xl border border-outline-variant/30">
+              <div className="bg-surface-container-low p-3.5 rounded-xl border border-outline-variant/30">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-secondary">Logged In As</p>
-                <p className="text-sm font-semibold text-on-surface mt-1">{currentUser?.name}</p>
-                <p className="text-xs text-on-surface-variant">User ID: {currentUser?.id}</p>
+                <p className="text-sm font-semibold text-on-surface mt-0.5">{currentUser?.name}</p>
                 <p className="text-xs text-on-surface-variant">Role: {currentUser?.role}</p>
-                {currentUser?.mobile && (
-                  <p className="text-xs text-on-surface-variant">Mobile: {currentUser?.mobile}</p>
-                )}
               </div>
+
+              {/* Profile Switcher List */}
+              {allFirmUsers.length > 0 && onSwitchUser && (
+                <div className="bg-surface-container-low p-3 rounded-xl border border-outline-variant/30 space-y-2">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-primary">Switch User Profile</p>
+                  <div className="space-y-1.5">
+                    {allFirmUsers.map((u) => {
+                      const isActive = u.id === currentUser?.id || u.name === currentUser?.name;
+                      return (
+                        <button
+                          key={u.id}
+                          onClick={() => {
+                            onSwitchUser(u);
+                            setShowProfile(false);
+                          }}
+                          className={`w-full text-left p-2 rounded-lg text-xs flex items-center justify-between transition-all cursor-pointer ${isActive ? 'bg-primary text-on-primary font-bold shadow-2xs' : 'bg-surface-bright border border-outline-variant/30 hover:bg-surface-container-high text-on-surface'}`}
+                        >
+                          <span className="truncate">{u.name}</span>
+                          <span className="text-[10px] opacity-80 shrink-0 ml-1">({u.role})</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
 
             {onClearAllData && (
               <button 
                 onClick={() => { setShowProfile(false); onClearAllData(); }}
-                className="w-full mt-4 bg-amber-500/10 border border-amber-500/20 text-amber-700 py-2.5 rounded-xl text-label-md font-medium hover:bg-amber-500/20 transition-colors flex items-center justify-center gap-2"
+                className="w-full mt-3 bg-amber-500/10 border border-amber-500/20 text-amber-700 py-2 rounded-xl text-xs font-bold hover:bg-amber-500/20 transition-colors flex items-center justify-center gap-2"
               >
                 <Trash2 className="w-4 h-4" />
                 <span>Erase Demo Data</span>
@@ -3288,9 +3827,9 @@ function MobileHeader({
                 setShowProfile(false);
                 onOpenSettings?.();
               }}
-              className="w-full mt-2 bg-secondary text-white py-2.5 rounded-xl text-label-md font-bold flex items-center justify-center gap-2 hover:opacity-90 transition-all cursor-pointer shadow-sm"
+              className="w-full mt-2 bg-secondary text-white py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-2 hover:opacity-90 transition-all cursor-pointer shadow-2xs"
             >
-              <Settings className="w-4.5 h-4.5" />
+              <Settings className="w-4 h-4" />
               Settings
             </button>
 
@@ -3300,9 +3839,9 @@ function MobileHeader({
                   setShowProfile(false);
                   onOpenHandover();
                 }}
-                className="w-full mt-2 bg-secondary/15 border border-secondary/25 text-secondary py-2.5 rounded-xl text-label-md font-bold flex items-center justify-center gap-2 hover:bg-secondary/20 transition-all cursor-pointer"
+                className="w-full mt-2 bg-secondary/15 border border-secondary/25 text-secondary py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-2 hover:bg-secondary/20 transition-all cursor-pointer"
               >
-                <ArrowLeftRight className="w-4.5 h-4.5" />
+                <ArrowLeftRight className="w-4 h-4" />
                 Handover Shift
               </button>
             )}
@@ -3313,16 +3852,16 @@ function MobileHeader({
                   setShowProfile(false);
                   onNavigate('masterAdmin');
                 }}
-                className="w-full mt-2 bg-primary/10 border border-primary/20 text-primary py-2.5 rounded-xl text-label-md font-bold flex items-center justify-center gap-2 hover:bg-primary/20 transition-all cursor-pointer"
+                className="w-full mt-2 bg-primary/10 border border-primary/20 text-primary py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-2 hover:bg-primary/20 transition-all cursor-pointer"
               >
-                <ShieldCheck className="w-4.5 h-4.5" />
+                <ShieldCheck className="w-4 h-4" />
                 Master Console
               </button>
             )}
 
             <button 
               onClick={() => setShowProfile(false)}
-              className="w-full mt-2 bg-primary text-on-primary py-2.5 rounded-xl text-label-md font-medium hover:bg-primary/95 transition-colors cursor-pointer"
+              className="w-full mt-2 bg-primary text-on-primary py-2 rounded-xl text-xs font-bold hover:bg-primary/95 transition-colors cursor-pointer"
             >
               Close
             </button>
@@ -3642,6 +4181,27 @@ function BentoGrid({
           amount={`₹${staffAdvanceToday.toLocaleString()}`} 
           amountColor="text-cyan-600" 
           onClick={() => onNavigateToTxHistory('staff_advance', '')}
+        />
+        <MetricCard 
+          title="Cashless Claims (MJPJAY & Insurance)" 
+          amount="Live Claims Hub" 
+          amountColor="text-indigo-600" 
+          className="border border-indigo-500/30 hover:border-indigo-500/60 bg-indigo-50/20"
+          onClick={() => onNavigate && onNavigate('cashlessPatient')}
+        />
+        <MetricCard 
+          title="Credit Overdue Reminders" 
+          amount={`${customers.filter(c => (c.pendingBalance || 0) > 0).length} Patients Due`} 
+          amountColor="text-amber-600" 
+          className="border border-amber-500/30 hover:border-amber-500/60 bg-amber-50/20"
+          onClick={() => onNavigate && onNavigate('creditReminders')}
+        />
+        <MetricCard 
+          title="Monthly Financial Report" 
+          amount="Aggregated Analytics" 
+          amountColor="text-blue-600" 
+          className="border border-blue-500/30 hover:border-blue-500/60 bg-blue-50/20"
+          onClick={() => onNavigate && onNavigate('monthlyReport')}
         />
       </div>
 
@@ -4239,12 +4799,14 @@ function FloatingActionButton({ onClick }: { onClick?: () => void }) {
 function BottomNav({ onNavigate, activePage, userRole, onLogout }: { onNavigate: (page: Page) => void, activePage: Page, userRole?: 'user' | 'firmAdmin', onLogout?: () => void }) {
   return (
     <nav className="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center h-20 px-2 bg-surface-container-lowest border-t border-outline-variant md:hidden">
-      <NavItem icon={<Home className={`w-6 h-6 ${activePage === 'dashboard' ? 'fill-on-secondary-container' : ''}`} />} label="Home" active={activePage === 'dashboard'} onClick={() => onNavigate('dashboard')} />
-      <NavItem icon={<Wallet className={`w-6 h-6 ${activePage === 'credit' ? 'fill-on-secondary-container' : ''}`} />} label="Credit" active={activePage === 'credit'} onClick={() => onNavigate('credit')} />
+      <NavItem icon={<Home className={`w-5 h-5 ${activePage === 'dashboard' ? 'fill-on-secondary-container' : ''}`} />} label="Home" active={activePage === 'dashboard'} onClick={() => onNavigate('dashboard')} />
+      <NavItem icon={<Wallet className={`w-5 h-5 ${activePage === 'credit' ? 'fill-on-secondary-container' : ''}`} />} label="Credit" active={activePage === 'credit'} onClick={() => onNavigate('credit')} />
+      <NavItem icon={<ShieldPlus className={`w-5 h-5 ${activePage === 'cashlessPatient' ? 'text-indigo-600' : ''}`} />} label="Cashless" active={activePage === 'cashlessPatient'} onClick={() => onNavigate('cashlessPatient')} />
+      <NavItem icon={<BarChart2 className={`w-5 h-5 ${activePage === 'monthlyReport' ? 'text-blue-600' : ''}`} />} label="Reports" active={activePage === 'monthlyReport'} onClick={() => onNavigate('monthlyReport')} />
       {userRole === 'firmAdmin' && (
-         <NavItem icon={<ShieldPlus className="w-6 h-6 text-primary" />} label="Admin" active={false} onClick={() => onNavigate('firmAdmin')} />
+         <NavItem icon={<ShieldAlert className="w-5 h-5 text-primary" />} label="Admin" active={activePage === 'firmAdmin'} onClick={() => onNavigate('firmAdmin')} />
       )}
-      <NavItem icon={<LogOut className="w-6 h-6 text-error" />} label="Logout" active={false} onClick={onLogout || (() => {})} />
+      <NavItem icon={<LogOut className="w-5 h-5 text-error" />} label="Logout" active={false} onClick={onLogout || (() => {})} />
     </nav>
   );
 }
@@ -9171,7 +9733,11 @@ function FirmAdminScreen({
   setCustomers,
   firmDailyRegisters,
   setFirmDailyRegisters,
-  workingDate
+  workingDate,
+  currentUser,
+  staffAttendance = [],
+  onSaveStaffAttendance,
+  onDeleteStaffAttendance
 }: { 
   onNavigate: (page: Page) => void, 
   onLogout: () => void, 
@@ -9183,9 +9749,13 @@ function FirmAdminScreen({
   setCustomers: React.Dispatch<React.SetStateAction<Customer[]>>,
   firmDailyRegisters: Record<string, { opening: number; cashSales: number; onlineSales: number; closed: boolean; forwarded?: number }>,
   setFirmDailyRegisters: React.Dispatch<React.SetStateAction<Record<string, { opening: number; cashSales: number; onlineSales: number; closed: boolean; forwarded?: number }>>>,
-  workingDate: string
+  workingDate: string,
+  currentUser?: { id: string; name: string; role: string; mobile: string } | null,
+  staffAttendance?: StaffAttendanceRecord[],
+  onSaveStaffAttendance?: (record: StaffAttendanceRecord) => void,
+  onDeleteStaffAttendance?: (recordId: string) => void
 }) {
-  const [activeTab, setActiveTab] = useState<'users' | 'cashReport' | 'backup' | 'settings'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'attendance' | 'cashReport' | 'backup' | 'settings'>('users');
   const [isAddingUser, setIsAddingUser] = useState(false);
   const [editingUserIndex, setEditingUserIndex] = useState<number | null>(null);
 
@@ -9520,6 +10090,13 @@ function FirmAdminScreen({
             <span>Manage Employees</span>
           </button>
           <button 
+            onClick={() => setActiveTab('attendance')}
+            className={`px-4 py-2 text-xs font-black rounded-lg transition-all cursor-pointer uppercase flex items-center gap-2 ${activeTab === 'attendance' ? 'bg-primary text-white shadow-sm' : 'text-on-surface-variant hover:bg-surface-container-high'}`}
+          >
+            <UserCheck className="w-4 h-4" />
+            <span>Staff Attendance</span>
+          </button>
+          <button 
             onClick={() => setActiveTab('cashReport')}
             className={`px-4 py-2 text-xs font-black rounded-lg transition-all cursor-pointer uppercase flex items-center gap-2 ${activeTab === 'cashReport' ? 'bg-primary text-white shadow-sm' : 'text-on-surface-variant hover:bg-surface-container-high'}`}
           >
@@ -9621,6 +10198,26 @@ function FirmAdminScreen({
               </table>
             </div>
           </section>
+        )}
+
+        {/* Tab: Staff Attendance Manager */}
+        {activeTab === 'attendance' && activeFirm && (
+          <StaffAttendanceManager
+            activeFirm={activeFirm}
+            currentUser={currentUser}
+            attendanceRecords={staffAttendance.filter(a => a.firmId === activeFirm.id)}
+            onSaveAttendance={(record) => {
+              if (onSaveStaffAttendance) {
+                onSaveStaffAttendance(record);
+              }
+            }}
+            onDeleteAttendance={(recordId) => {
+              if (onDeleteStaffAttendance) {
+                onDeleteStaffAttendance(recordId);
+              }
+            }}
+            workingDate={workingDate}
+          />
         )}
 
         {/* Tab 2: Total Cash Reports with selection */}

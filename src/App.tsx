@@ -63,6 +63,9 @@ import {
   MessageSquare,
   Send,
   ExternalLink,
+  ArrowUpDown,
+  SlidersHorizontal,
+  CheckCircle2,
 } from 'lucide-react';
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { CalendarDatePicker } from './components/CalendarDatePicker';
@@ -188,9 +191,9 @@ export type Firm = {
   password?: string;
 };
 
-export const SEEDED_DEFAULT_FIRM: Firm = {
+export const SEEDED_WEELCURE_FIRM: Firm = {
   id: 'F-1001',
-  name: 'Yogwalture Pharmacy',
+  name: 'Weelcure Pharmacy',
   adminName: 'Yograj Walture',
   email: 'yogwalture@gmail.com',
   mobile: '9876543210',
@@ -208,7 +211,29 @@ export const SEEDED_DEFAULT_FIRM: Firm = {
   password: 'yograje1987'
 };
 
-export const INITIAL_FIRMS: Firm[] = [SEEDED_DEFAULT_FIRM];
+export const SEEDED_MEDIHEALTH_FIRM: Firm = {
+  id: 'F-1002',
+  name: 'MediHealth Pharmacy',
+  adminName: 'Yograj Walture',
+  email: 'yogwalture@gmail.com',
+  mobile: '9876543210',
+  users: [
+    {
+      id: 'rahul_counter',
+      name: 'Rahul Counter Staff',
+      role: 'Counter Staff',
+      mobile: '9876543212',
+      password: 'password',
+      salary: 16000
+    }
+  ],
+  status: 'Active',
+  password: 'yograje1987'
+};
+
+export const SEEDED_DEFAULT_FIRM: Firm = SEEDED_WEELCURE_FIRM;
+
+export const INITIAL_FIRMS: Firm[] = [SEEDED_WEELCURE_FIRM, SEEDED_MEDIHEALTH_FIRM];
 
 export const INITIAL_CASHLESS_CLAIMS: CashlessClaim[] = [
   {
@@ -426,7 +451,7 @@ export default function App() {
           if (f.id === 'F-1001') {
             return {
               ...f,
-              name: 'Yogwalture Pharmacy',
+              name: f.name === 'Yogwalture Pharmacy' ? 'Weelcure Pharmacy' : (f.name || 'Weelcure Pharmacy'),
               adminName: 'Yograj Walture',
               email: 'yogwalture@gmail.com',
               password: 'yograje1987',
@@ -438,6 +463,25 @@ export default function App() {
                   mobile: '9876543211',
                   password: 'password',
                   salary: 15000
+                }
+              ]
+            };
+          }
+          if (f.id === 'F-1002') {
+            return {
+              ...f,
+              name: f.name || 'MediHealth Pharmacy',
+              adminName: 'Yograj Walture',
+              email: 'yogwalture@gmail.com',
+              password: 'yograje1987',
+              users: f.users || [
+                {
+                  id: 'rahul_counter',
+                  name: 'Rahul Counter Staff',
+                  role: 'Counter Staff',
+                  mobile: '9876543212',
+                  password: 'password',
+                  salary: 16000
                 }
               ]
             };
@@ -956,7 +1000,7 @@ export default function App() {
         if (f.id === 'F-1001') {
           return {
             ...f,
-            name: f.name || 'Yogwalture Pharmacy',
+            name: f.name === 'Yogwalture Pharmacy' ? 'Weelcure Pharmacy' : (f.name || 'Weelcure Pharmacy'),
             adminName: f.adminName || 'Yograj Walture',
             email: f.email || 'yogwalture@gmail.com',
             password: f.password || 'yograje1987',
@@ -968,6 +1012,26 @@ export default function App() {
                 mobile: '9876543211',
                 password: 'password',
                 salary: 15000
+              }
+            ],
+            status: f.status || 'Active'
+          };
+        }
+        if (f.id === 'F-1002') {
+          return {
+            ...f,
+            name: f.name || 'MediHealth Pharmacy',
+            adminName: f.adminName || 'Yograj Walture',
+            email: f.email || 'yogwalture@gmail.com',
+            password: f.password || 'yograje1987',
+            users: f.users || [
+              {
+                id: 'rahul_counter',
+                name: 'Rahul Counter Staff',
+                role: 'Counter Staff',
+                mobile: '9876543212',
+                password: 'password',
+                salary: 16000
               }
             ],
             status: f.status || 'Active'
@@ -1493,6 +1557,11 @@ export default function App() {
             userRole={userRole} 
             onLogout={handleLogout} 
             activeFirm={firms.find(f => f.id === currentFirmId)} 
+            firms={firms}
+            onSwitchFirm={(targetFirmId) => {
+              setCurrentFirmId(targetFirmId);
+              localStorage.setItem('shopbooks_current_firm_id', targetFirmId);
+            }}
             currentUser={currentUser} 
             onClearAllData={handleClearAllData}
             onOpenSettings={() => setIsPosSettingsOpen(true)}
@@ -1505,6 +1574,11 @@ export default function App() {
           />
           <MobileHeader 
             activeFirm={firms.find(f => f.id === currentFirmId)} 
+            firms={firms}
+            onSwitchFirm={(targetFirmId) => {
+              setCurrentFirmId(targetFirmId);
+              localStorage.setItem('shopbooks_current_firm_id', targetFirmId);
+            }}
             currentUser={currentUser} 
             onClearAllData={handleClearAllData}
             onOpenSettings={() => setIsPosSettingsOpen(true)}
@@ -1527,6 +1601,11 @@ export default function App() {
           onNavigate={setCurrentPage} 
           onLogout={handleLogout} 
           activeFirm={firms.find(f => f.id === currentFirmId)} 
+          firms={firms}
+          onSwitchFirm={(targetFirmId) => {
+            setCurrentFirmId(targetFirmId);
+            localStorage.setItem('shopbooks_current_firm_id', targetFirmId);
+          }}
           onUpdateFirm={(updatedFirm) => setFirms(prev => prev.map(f => f.id === updatedFirm.id ? updatedFirm : f))} 
           transactions={transactions}
           setTransactions={setTransactions}
@@ -2563,28 +2642,6 @@ function Dashboard({
   return (
     <>
       <main className="max-w-7xl mx-auto px-container-padding-mobile md:px-container-padding-desktop py-stack-lg space-y-stack-lg">
-        {/* Erase Demo Data Banner */}
-        {(transactions.filter(t => t.firmId === currentFirmId).length > 0 || activeCustomers.length > 0) && onClearAllData && (
-          <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 text-left">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-amber-500/20 text-amber-700 rounded-lg shrink-0">
-                <Trash2 className="w-5 h-5 text-amber-700" />
-              </div>
-              <div>
-                <h4 className="font-bold text-amber-805 text-amber-800 text-sm">Demo Data Active</h4>
-                <p className="text-xs text-amber-700/90">Click the button below to clear all sample customers and transactions to begin your own custom testing.</p>
-              </div>
-            </div>
-            <button 
-              onClick={onClearAllData}
-              className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer shrink-0 shadow-sm flex items-center gap-1.5 uppercase tracking-wider"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              <span>Erase Demo Data</span>
-            </button>
-          </div>
-        )}
-
         {/* Dynamic User Profile and Firm Details Banner */}
         <section className="bg-gradient-to-r from-primary/10 via-secondary/5 to-transparent rounded-2xl p-5 border border-outline-variant/30 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 text-left">
           <div className="flex items-center gap-4">
@@ -3092,7 +3149,7 @@ function Dashboard({
         />
         
         <div className="grid md:grid-cols-3 gap-gutter">
-          <TrendChart isDemoMode={isDemoMode} />
+          <TrendChart transactions={transactions.filter(t => t.firmId === currentFirmId)} />
           <RecentTransactions onNavigate={onNavigate} transactions={activeTransactions} />
         </div>
       </main>
@@ -3500,6 +3557,8 @@ function SideNav({
   userRole, 
   onLogout, 
   activeFirm, 
+  firms = [],
+  onSwitchFirm,
   currentUser, 
   onClearAllData, 
   onOpenSettings, 
@@ -3515,6 +3574,8 @@ function SideNav({
   userRole?: 'user' | 'firmAdmin', 
   onLogout?: () => void, 
   activeFirm?: Firm, 
+  firms?: Firm[],
+  onSwitchFirm?: (firmId: string) => void,
   currentUser?: any, 
   onClearAllData?: () => void, 
   onOpenSettings?: () => void, 
@@ -3526,6 +3587,7 @@ function SideNav({
   onSwitchUser?: (user: { id: string; name: string; role: string; mobile: string }) => void
 }) {
   const [showSwitchMenu, setShowSwitchMenu] = useState(false);
+  const [showFirmSwitchMenu, setShowFirmSwitchMenu] = useState(false);
 
   const allFirmUsers = useMemo(() => {
     if (!activeFirm) return [];
@@ -3612,8 +3674,46 @@ function SideNav({
       <div className="p-4 border-t border-outline-variant space-y-3">
         {activeFirm && currentUser && (
           <div className="bg-surface-container-low p-3 rounded-xl border border-outline-variant/30 text-left">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-primary">Active Firm</p>
+            <div className="flex items-center justify-between">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-primary">Active Firm</p>
+              {firms.length > 1 && onSwitchFirm && (
+                <button
+                  onClick={() => setShowFirmSwitchMenu(!showFirmSwitchMenu)}
+                  className="text-[10px] font-bold text-primary hover:underline cursor-pointer flex items-center gap-1"
+                >
+                  <span>Switch Firm</span>
+                  <RefreshCw className="w-3 h-3" />
+                </button>
+              )}
+            </div>
             <p className="text-sm font-semibold text-on-surface truncate">{activeFirm.name}</p>
+            
+            {/* Collapsible Firm Switcher */}
+            {showFirmSwitchMenu && firms.length > 1 && onSwitchFirm && (
+              <div className="mt-2 pt-2 border-t border-outline-variant/40 space-y-1.5 max-h-40 overflow-y-auto">
+                <p className="text-[9px] font-bold uppercase text-on-surface-variant">Select Pharmacy Firm:</p>
+                {firms.map((f) => {
+                  const isActive = f.id === activeFirm.id;
+                  return (
+                    <button
+                      key={f.id}
+                      onClick={() => {
+                        onSwitchFirm(f.id);
+                        setShowFirmSwitchMenu(false);
+                      }}
+                      className={`w-full text-left p-1.5 rounded-lg text-xs flex items-center justify-between transition-all cursor-pointer ${
+                        isActive
+                          ? 'bg-primary text-on-primary font-bold'
+                          : 'bg-surface-bright hover:bg-surface-container-high text-on-surface'
+                      }`}
+                    >
+                      <span className="truncate">{f.name}</span>
+                      <span className="text-[9px] opacity-80 shrink-0 ml-1">({f.id})</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
             
             <div className="mt-2 pt-2 border-t border-outline-variant/50">
               <div className="flex items-center justify-between">
@@ -3680,6 +3780,8 @@ function SideNav({
 
 function MobileHeader({ 
   activeFirm, 
+  firms = [],
+  onSwitchFirm,
   currentUser, 
   onClearAllData, 
   onOpenSettings, 
@@ -3692,6 +3794,8 @@ function MobileHeader({
   onSwitchUser
 }: { 
   activeFirm?: Firm, 
+  firms?: Firm[],
+  onSwitchFirm?: (firmId: string) => void,
   currentUser?: any, 
   onClearAllData?: () => void, 
   onOpenSettings?: () => void, 
@@ -3775,9 +3879,42 @@ function MobileHeader({
 
             <div className="space-y-3 text-left">
               <div className="bg-surface-container-low p-3.5 rounded-xl border border-outline-variant/30">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-primary">Firm Details</p>
+                <div className="flex items-center justify-between">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-primary">Firm Details</p>
+                  {firms.length > 1 && onSwitchFirm && (
+                    <span className="text-[10px] font-bold text-primary">Multi-Firm</span>
+                  )}
+                </div>
                 <p className="text-sm font-semibold text-on-surface mt-0.5">{activeFirm?.name}</p>
                 <p className="text-xs text-on-surface-variant">ID: {activeFirm?.id}</p>
+
+                {firms.length > 1 && onSwitchFirm && (
+                  <div className="mt-2 pt-2 border-t border-outline-variant/40 space-y-1.5">
+                    <p className="text-[9px] font-bold uppercase text-on-surface-variant">Switch Active Firm:</p>
+                    <div className="grid grid-cols-1 gap-1">
+                      {firms.map((f) => {
+                        const isActive = f.id === activeFirm?.id;
+                        return (
+                          <button
+                            key={f.id}
+                            onClick={() => {
+                              onSwitchFirm(f.id);
+                              setShowProfile(false);
+                            }}
+                            className={`w-full text-left p-2 rounded-lg text-xs flex items-center justify-between transition-all cursor-pointer ${
+                              isActive
+                                ? 'bg-primary text-on-primary font-bold shadow-2xs'
+                                : 'bg-surface-bright border border-outline-variant/30 hover:bg-surface-container-high text-on-surface'
+                            }`}
+                          >
+                            <span className="truncate">{f.name}</span>
+                            <span className="text-[10px] opacity-80 shrink-0 ml-1">({f.id})</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="bg-surface-container-low p-3.5 rounded-xl border border-outline-variant/30">
@@ -4021,7 +4158,7 @@ function BentoGrid({
 
   // Include both patient credit and staff credit in totalCreditGiven as requested
   const totalCreditGiven = dynamicCreditGiven + staffCreditToday;
-  const totalExpenses = (isDemoMode ? 1250 : 0) + dynamicExpenses;
+  const totalExpenses = dynamicExpenses;
 
   // Calculate day sales (includes total credit sales [patients + staff], and scheme bills)
   const totalSalesToday = totalCreditGiven + dynamicSchemeReceivables;
@@ -4658,37 +4795,81 @@ function MetricCard({
   );
 }
 
-function TrendChart({ isDemoMode }: { isDemoMode?: boolean }) {
+function TrendChart({ transactions = [] }: { transactions?: Transaction[] }) {
+  const [trendRange, setTrendRange] = useState<'7d' | '30d'>('7d');
+
+  // Compute daily totals for the past 7 days
+  const last7DaysData = useMemo(() => {
+    const days: { dateStr: string; label: string; amount: number; txCount: number }[] = [];
+    const today = new Date();
+
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(today.getDate() - i);
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      const dateStr = `${yyyy}-${mm}-${dd}`;
+      const label = i === 0 ? 'Today' : d.toLocaleDateString('en-IN', { weekday: 'short' });
+
+      const dayTxs = transactions.filter(t => t.date === dateStr);
+      const totalAmount = dayTxs.reduce((sum, t) => sum + (t.type === 'credit_sale' || t.type === 'scheme_bill' || t.type === 'staff_credit' ? t.amount : 0), 0);
+
+      days.push({
+        dateStr,
+        label,
+        amount: totalAmount,
+        txCount: dayTxs.length
+      });
+    }
+    return days;
+  }, [transactions]);
+
+  const maxAmount = Math.max(...last7DaysData.map(d => d.amount), 100);
+  const totalPeriodSales = last7DaysData.reduce((sum, d) => sum + d.amount, 0);
+
   return (
     <div className="md:col-span-2 bg-surface-container-lowest rounded-xl p-gutter shadow-[0_4px_20px_rgba(0,0,0,0.04)] text-left flex flex-col justify-between">
       <div className="flex justify-between items-center mb-stack-lg">
-        <h2 className="text-headline-md text-on-surface">Daily Trend</h2>
-        <select className="bg-surface-bright border-outline-variant text-sm rounded-lg px-3 py-1.5 focus:border-secondary focus:ring-secondary focus:outline-none border">
-          <option>This Week</option>
-          <option>This Month</option>
-        </select>
+        <div>
+          <h2 className="text-headline-md text-on-surface">Daily Trend</h2>
+          <span className="text-xs text-on-surface-variant font-medium">Last 7 Days Sales: ₹{totalPeriodSales.toLocaleString('en-IN')}</span>
+        </div>
+        <div className="flex items-center gap-1 bg-surface-container px-2 py-1 rounded-lg border border-outline-variant/30 text-xs font-semibold text-primary">
+          <span>7-Day Real Ledger</span>
+        </div>
       </div>
       
-      {isDemoMode ? (
-        <div className="h-64 w-full bg-surface-container flex items-end justify-between px-4 pb-4 pt-12 rounded-lg relative overflow-hidden">
-          {/* Fake Graph Bars - translating original HTML to React */}
-          <div className="w-1/12 bg-primary-fixed-dim rounded-t-md h-1/3"></div>
-          <div className="w-1/12 bg-primary-fixed-dim rounded-t-md h-1/2"></div>
-          <div className="w-1/12 bg-primary-fixed-dim rounded-t-md h-2/5"></div>
-          <div className="w-1/12 bg-primary-fixed-dim rounded-t-md h-3/4"></div>
-          <div className="w-1/12 bg-primary-fixed-dim rounded-t-md h-1/2"></div>
-          <div className="w-1/12 bg-primary-fixed-dim rounded-t-md h-4/5"></div>
-          <div className="w-1/12 bg-secondary rounded-t-md h-full relative group cursor-pointer transition-colors duration-200 hover:bg-secondary/90">
-            <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-on-surface text-surface text-xs py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity">
-              ₹45k
-            </div>
-          </div>
+      {transactions.length > 0 ? (
+        <div className="h-64 w-full bg-surface-container/50 flex items-end justify-between px-4 pb-4 pt-12 rounded-lg relative overflow-hidden">
+          {last7DaysData.map((d, idx) => {
+            const heightPercent = Math.max(8, Math.min(100, Math.round((d.amount / maxAmount) * 100)));
+            const isToday = idx === last7DaysData.length - 1;
+            return (
+              <div key={d.dateStr} className="flex-1 flex flex-col items-center gap-1.5 h-full justify-end group cursor-pointer relative px-1">
+                <div 
+                  className="absolute -top-6 left-1/2 -translate-x-1/2 bg-on-surface text-surface text-[10px] font-bold py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity z-10 whitespace-nowrap shadow-md"
+                >
+                  ₹{d.amount.toLocaleString('en-IN')} ({d.txCount} txs)
+                </div>
+                <div 
+                  style={{ height: `${heightPercent}%` }}
+                  className={`w-full max-w-[32px] rounded-t-md transition-all duration-300 ${
+                    isToday ? 'bg-primary shadow-[0_2px_8px_rgba(0,106,106,0.3)]' : 'bg-primary-fixed-dim hover:bg-primary/70'
+                  }`}
+                />
+                <span className={`text-[10px] font-bold ${isToday ? 'text-primary' : 'text-on-surface-variant'}`}>
+                  {d.label}
+                </span>
+              </div>
+            );
+          })}
         </div>
       ) : (
         <div className="h-64 w-full bg-surface-container/40 flex flex-col items-center justify-center p-6 rounded-lg text-center border border-dashed border-outline-variant">
           <TrendingUp className="w-10 h-10 text-on-surface-variant/40 mb-2" />
-          <p className="text-sm font-semibold text-on-surface">Ledger Visualizations</p>
-          <p className="text-xs text-on-surface-variant max-w-xs mt-1">Daily trend graphs will display here live as you record transactions.</p>
+          <p className="text-sm font-semibold text-on-surface">Live Ledger Visualizations</p>
+          <p className="text-xs text-on-surface-variant max-w-xs mt-1">Daily trend graphs will display here live as transactions are recorded for this firm.</p>
         </div>
       )}
     </div>
@@ -6664,6 +6845,8 @@ function CreditScreen({
 
   // Customer Credit state
   const totalOutstanding = activeCustomers.reduce((sum, c) => sum + c.pendingBalance, 0);
+  const [customerFilter, setCustomerFilter] = useState<'all' | 'pending' | 'cleared'>('all');
+  const [customerSort, setCustomerSort] = useState<'status_prio' | 'due_desc' | 'due_asc' | 'name_asc' | 'name_desc' | 'recent_activity'>('status_prio');
   const [searchQuery, setSearchQuery] = useState('');
   const [patientName, setPatientName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
@@ -6694,10 +6877,57 @@ function CreditScreen({
     ? activeCustomers.filter(c => c.name.toLowerCase().includes(patientName.toLowerCase()))
     : [];
 
-  const filteredCustomers = activeCustomers.filter(c => 
-    c.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-    c.phone.includes(searchQuery)
-  );
+  const pendingCustomers = useMemo(() => activeCustomers.filter(c => c.pendingBalance > 0 && c.status !== 'Paid'), [activeCustomers]);
+  const clearedCustomers = useMemo(() => activeCustomers.filter(c => c.pendingBalance <= 0 || c.status === 'Paid'), [activeCustomers]);
+  const totalPendingDue = useMemo(() => pendingCustomers.reduce((sum, c) => sum + c.pendingBalance, 0), [pendingCustomers]);
+
+  const filteredAndSortedCustomers = useMemo(() => {
+    let list = activeCustomers;
+
+    // 1. Filter by Category Tab (All / Pending Payment / Cleared Payment)
+    if (customerFilter === 'pending') {
+      list = pendingCustomers;
+    } else if (customerFilter === 'cleared') {
+      list = clearedCustomers;
+    }
+
+    // 2. Search query filter
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      list = list.filter(c => c.name.toLowerCase().includes(q) || c.phone.includes(q));
+    }
+
+    // 3. Sorting
+    return [...list].sort((a, b) => {
+      if (customerSort === 'name_asc') {
+        return a.name.localeCompare(b.name);
+      }
+      if (customerSort === 'name_desc') {
+        return b.name.localeCompare(a.name);
+      }
+      if (customerSort === 'due_desc') {
+        return b.pendingBalance - a.pendingBalance;
+      }
+      if (customerSort === 'due_asc') {
+        return a.pendingBalance - b.pendingBalance;
+      }
+      if (customerSort === 'status_prio') {
+        const getPrio = (c: Customer) => {
+          if (c.status === 'Overdue' || c.pendingBalance >= 10000) return 3;
+          if (c.pendingBalance > 0 && c.status !== 'Paid') return 2;
+          return 1; // Cleared / Paid
+        };
+        const diff = getPrio(b) - getPrio(a);
+        if (diff !== 0) return diff;
+        return b.pendingBalance - a.pendingBalance;
+      }
+      if (customerSort === 'recent_activity') {
+        const getDt = (c: Customer) => c.lastPaymentDate === 'Today' ? '9999' : (c.lastPaymentDate || '');
+        return getDt(b).localeCompare(getDt(a));
+      }
+      return 0;
+    });
+  }, [activeCustomers, pendingCustomers, clearedCustomers, customerFilter, searchQuery, customerSort]);
 
   // Filter transactions
   const staffCreditTx = transactions.filter(t => t.firmId === currentFirmId && t.type === 'staff_credit');
@@ -7007,46 +7237,208 @@ function CreditScreen({
           </div>
 
           {/* Customer List Section */}
-          <h2 className="text-headline-md text-on-surface font-bold text-lg mt-8">Registered Customers ({filteredCustomers.length})</h2>
-          
-          <div className="bg-white/95 backdrop-blur-md shadow-[0_4px_20px_rgba(0,0,0,0.04)] rounded-xl p-4 border border-outline-variant/30 flex flex-col md:flex-row gap-stack-md">
-            <div className="relative flex-grow">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant w-5 h-5" />
-              <input 
-                className="w-full bg-surface-bright border border-outline-variant focus:border-secondary rounded-lg pl-12 pr-4 py-3 text-body-md text-on-background outline-none transition-colors" 
-                placeholder="Search customer name or phone..." 
-                type="text" 
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-gutter">
-            {filteredCustomers.map(c => (
-              <CustomerCard 
-                 key={c.id}
-                 name={c.name} 
-                 phone={c.phone} 
-                 status={c.status}
-                 pending={`₹${c.pendingBalance.toLocaleString()}`}
-                 pendingBalance={c.pendingBalance}
-                 lastPayment={c.lastPaymentDate || 'None'}
-                 onReceivePayment={() => {
-                   onSelectCustomer(c.id);
-                   onNavigate('customerLedger');
-                 }}
-                 onViewHistory={() => {
-                   onSelectCustomer(c.id);
-                   onNavigate('customerLedger');
-                 }}
-              />
-            ))}
-            {filteredCustomers.length === 0 && (
-              <div className="col-span-full bg-surface-container-lowest p-12 text-center rounded-xl border border-dashed border-outline-variant">
-                <p className="text-on-surface-variant">No customers found matching "{searchQuery}"</p>
+          <div className="mt-8 space-y-4">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+              <div>
+                <h2 className="text-headline-md text-on-surface font-bold text-lg flex items-center gap-2">
+                  <Users className="w-5 h-5 text-primary" />
+                  Patient Accounts & Settlement List ({filteredAndSortedCustomers.length})
+                </h2>
+                <p className="text-xs text-on-surface-variant">Filter by payment status, sort by dues or names, and collect settlements.</p>
               </div>
-            )}
+
+              {/* Status Filter Tabs (ALL / PENDING PAYMENT / CLEARED PAYMENT) */}
+              <div className="flex items-center gap-1.5 flex-wrap bg-surface-container-high/60 p-1.5 rounded-xl border border-outline-variant/30">
+                <button
+                  type="button"
+                  onClick={() => setCustomerFilter('all')}
+                  className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                    customerFilter === 'all'
+                      ? 'bg-primary text-on-primary shadow-sm'
+                      : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest/60'
+                  }`}
+                >
+                  <Users className="w-3.5 h-3.5" />
+                  All Patients ({activeCustomers.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCustomerFilter('pending')}
+                  className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                    customerFilter === 'pending'
+                      ? 'bg-amber-600 text-white shadow-sm'
+                      : 'text-amber-700 dark:text-amber-300 hover:bg-amber-500/10'
+                  }`}
+                >
+                  <Clock className="w-3.5 h-3.5" />
+                  Pending Payment ({pendingCustomers.length})
+                  {totalPendingDue > 0 && (
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-black ${
+                      customerFilter === 'pending' ? 'bg-amber-800 text-amber-100' : 'bg-amber-200/80 text-amber-900'
+                    }`}>
+                      ₹{totalPendingDue.toLocaleString('en-IN')}
+                    </span>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCustomerFilter('cleared')}
+                  className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                    customerFilter === 'cleared'
+                      ? 'bg-emerald-600 text-white shadow-sm'
+                      : 'text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/10'
+                  }`}
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  Cleared Payment ({clearedCustomers.length})
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-black ${
+                    customerFilter === 'cleared' ? 'bg-emerald-800 text-emerald-100' : 'bg-emerald-200/80 text-emerald-900'
+                  }`}>
+                    ₹0 Due
+                  </span>
+                </button>
+              </div>
+            </div>
+
+            {/* Search & Sort Controls Toolbar */}
+            <div className="bg-white/95 backdrop-blur-md shadow-[0_4px_20px_rgba(0,0,0,0.04)] rounded-xl p-4 border border-outline-variant/30 flex flex-col md:flex-row gap-3 items-stretch md:items-center">
+              <div className="relative flex-grow">
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant w-4 h-4" />
+                <input 
+                  className="w-full bg-surface-bright border border-outline-variant focus:border-secondary rounded-lg pl-10 pr-9 py-2.5 text-sm text-on-background outline-none transition-colors" 
+                  placeholder={`Search in ${customerFilter === 'all' ? 'all' : customerFilter === 'pending' ? 'pending due' : 'cleared'} patients by name or phone...`} 
+                  type="text" 
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+                {searchQuery && (
+                  <button 
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-on-surface p-1 rounded-full cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              {/* Sort By Dropdown */}
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-xs text-on-surface-variant font-bold flex items-center gap-1">
+                  <ArrowUpDown className="w-3.5 h-3.5 text-primary" />
+                  Sort:
+                </span>
+                <select
+                  value={customerSort}
+                  onChange={(e: any) => setCustomerSort(e.target.value)}
+                  className="bg-surface-bright border border-outline-variant focus:border-secondary rounded-lg px-3 py-2.5 text-xs font-semibold text-on-background outline-none cursor-pointer"
+                >
+                  <option value="status_prio">Priority (Overdue → Due → Cleared)</option>
+                  <option value="due_desc">Due Amount: High to Low (₹ High → Low)</option>
+                  <option value="due_asc">Due Amount: Low to High (₹ Low → High)</option>
+                  <option value="name_asc">Patient Name (A → Z)</option>
+                  <option value="name_desc">Patient Name (Z → A)</option>
+                  <option value="recent_activity">Recent Activity / Last Payment</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Filter Summary Context Banner */}
+            <div className={`p-3 rounded-xl border text-xs font-medium flex items-center justify-between gap-3 ${
+              customerFilter === 'pending'
+                ? 'bg-amber-50/80 border-amber-300 text-amber-900'
+                : customerFilter === 'cleared'
+                ? 'bg-emerald-50/80 border-emerald-300 text-emerald-900'
+                : 'bg-surface-container-low border-outline-variant/30 text-on-surface'
+            }`}>
+              <div className="flex items-center gap-2">
+                {customerFilter === 'pending' ? (
+                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                ) : customerFilter === 'cleared' ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                ) : (
+                  <Users className="w-4 h-4 text-primary shrink-0" />
+                )}
+                <span>
+                  {customerFilter === 'pending' && (
+                    <>Showing <strong>{filteredAndSortedCustomers.length} Patients with Pending Dues</strong> totaling <strong>₹{totalPendingDue.toLocaleString('en-IN')}</strong>. Outstanding dues are displayed below.</>
+                  )}
+                  {customerFilter === 'cleared' && (
+                    <>Showing <strong>{filteredAndSortedCustomers.length} Patients with Cleared Payments</strong> (All past credit dues fully settled with <strong>₹0.00 Due</strong>).</>
+                  )}
+                  {customerFilter === 'all' && (
+                    <>Showing <strong>All {filteredAndSortedCustomers.length} Registered Patients</strong> ({pendingCustomers.length} Pending Due: ₹{totalPendingDue.toLocaleString('en-IN')} | {clearedCustomers.length} Cleared: ₹0 Due).</>
+                  )}
+                </span>
+              </div>
+              <div className="text-[11px] font-bold text-on-surface-variant shrink-0">
+                Sorted by: {
+                  customerSort === 'due_desc' ? 'Highest Due First' :
+                  customerSort === 'due_asc' ? 'Lowest Due First' :
+                  customerSort === 'name_asc' ? 'Name A-Z' :
+                  customerSort === 'name_desc' ? 'Name Z-A' :
+                  customerSort === 'recent_activity' ? 'Recent Activity' : 'Priority'
+                }
+              </div>
+            </div>
+
+            {/* Customer Cards Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-gutter">
+              {filteredAndSortedCustomers.map(c => (
+                <CustomerCard 
+                   key={c.id}
+                   name={c.name} 
+                   phone={c.phone} 
+                   status={c.status}
+                   pending={`₹${c.pendingBalance.toLocaleString('en-IN')}`}
+                   pendingBalance={c.pendingBalance}
+                   lastPayment={c.lastPaymentDate || 'None'}
+                   firmName={currentFirm?.name || 'Pharmacy'}
+                   onReceivePayment={() => {
+                     onSelectCustomer(c.id);
+                     onNavigate('customerLedger');
+                   }}
+                   onViewHistory={() => {
+                     onSelectCustomer(c.id);
+                     onNavigate('customerLedger');
+                   }}
+                   onNewCreditSale={() => {
+                     setPatientName(c.name);
+                     setCustomerPhone(c.phone);
+                     setShowAutoPrefilledBadge(true);
+                     window.scrollTo({ top: 0, behavior: 'smooth' });
+                   }}
+                />
+              ))}
+              {filteredAndSortedCustomers.length === 0 && (
+                <div className="col-span-full bg-surface-container-lowest p-12 text-center rounded-xl border border-dashed border-outline-variant space-y-3">
+                  <div className="w-12 h-12 rounded-full bg-surface-container mx-auto flex items-center justify-center text-on-surface-variant">
+                    {customerFilter === 'pending' ? <CheckCircle2 className="w-6 h-6 text-emerald-600" /> : <Search className="w-6 h-6" />}
+                  </div>
+                  <p className="text-on-surface font-bold">
+                    {customerFilter === 'pending'
+                      ? 'No Pending Payments Found!'
+                      : customerFilter === 'cleared'
+                      ? 'No Cleared Payments Found.'
+                      : `No customers found matching "${searchQuery}"`}
+                  </p>
+                  <p className="text-xs text-on-surface-variant max-w-md mx-auto">
+                    {customerFilter === 'pending'
+                      ? 'All patient credit accounts are currently cleared and up to date with ₹0 pending balance.'
+                      : customerFilter === 'cleared'
+                      ? 'None of the registered customers currently have a ₹0 fully cleared balance.'
+                      : 'Try modifying your search keywords or clearing the filter.'}
+                  </p>
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery('')}
+                      className="px-4 py-2 rounded-lg bg-surface-container-high text-xs font-bold text-primary hover:bg-surface-container-highest cursor-pointer inline-flex items-center gap-1.5"
+                    >
+                      Clear Search Filter
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </>
       )}
@@ -7364,70 +7756,161 @@ function CreditScreen({
   );
 }
 
-function CustomerCard({ name, phone, status, pending, pendingBalance = 0, lastPayment, onReceivePayment, onViewHistory }: any) {
-  const isOverdue = status === 'Overdue';
-  const isPending = status === 'Pending';
-  const isPaid = status === 'Paid';
+function CustomerCard({ 
+  name, 
+  phone, 
+  status, 
+  pending, 
+  pendingBalance = 0, 
+  lastPayment, 
+  firmName = 'Pharmacy',
+  onReceivePayment, 
+  onViewHistory,
+  onNewCreditSale
+}: any) {
+  const isPaid = pendingBalance <= 0 || status === 'Paid';
+  const isOverdue = !isPaid && (status === 'Overdue' || pendingBalance >= 10000);
+  const isPending = !isPaid && !isOverdue;
 
-  const hasLowBalanceAlert = pendingBalance >= 10000;
+  const hasLowBalanceAlert = !isPaid && pendingBalance >= 10000;
 
-  const statusBg = isOverdue ? 'bg-error/10' : isPending ? 'bg-[#F59E0B]/10' : 'bg-secondary/10';
-  const statusBadgeBg = isOverdue ? 'bg-error-container text-on-error-container' : isPending ? 'bg-[#FEF3C7] text-[#92400E]' : 'bg-secondary-container text-on-secondary-container';
-  const pendingColor = isOverdue ? 'text-error' : isPaid ? 'text-secondary' : 'text-on-background';
+  const statusBg = isPaid 
+    ? 'bg-emerald-500/10' 
+    : isOverdue 
+    ? 'bg-error/10' 
+    : 'bg-amber-500/10';
+
+  const statusBadgeBg = isPaid
+    ? 'bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold'
+    : isOverdue
+    ? 'bg-error-container text-on-error-container font-bold border border-error/30'
+    : 'bg-[#FEF3C7] text-[#92400E] font-bold border border-amber-300';
+
+  const displayStatus = isPaid ? 'Cleared / Paid' : isOverdue ? 'Overdue Due' : 'Pending Due';
+
+  const whatsappMessage = encodeURIComponent(
+    `Hello ${name}, gentle payment reminder from ${firmName}. You have a pending credit balance of ₹${pendingBalance.toLocaleString('en-IN')}. Please settle at your earliest convenience via UPI/Cash. Thank you!`
+  );
 
   return (
-    <div className={`bg-white/95 backdrop-blur-md shadow-[0_4px_20px_rgba(0,0,0,0.04)] rounded-xl p-5 border flex flex-col justify-between h-full relative overflow-hidden transition-all duration-300 ${isPaid ? 'opacity-80' : ''} ${hasLowBalanceAlert ? 'border-red-400/80 shadow-[0_4px_20px_rgba(239,68,68,0.08)] ring-1 ring-red-400/30' : 'border-outline-variant/30'}`}>
+    <div className={`bg-white/95 backdrop-blur-md shadow-[0_4px_20px_rgba(0,0,0,0.04)] rounded-xl p-5 border flex flex-col justify-between h-full relative overflow-hidden transition-all duration-300 ${
+      isPaid 
+        ? 'border-emerald-500/30 hover:border-emerald-500/60' 
+        : hasLowBalanceAlert 
+        ? 'border-red-400/80 shadow-[0_4px_20px_rgba(239,68,68,0.08)] ring-1 ring-red-400/30' 
+        : 'border-outline-variant/30 hover:border-outline-variant/60'
+    }`}>
       {hasLowBalanceAlert && (
         <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-red-500 rounded-l-xl"></div>
       )}
+      {isPaid && (
+        <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-emerald-500 rounded-l-xl"></div>
+      )}
       <div className={`absolute top-0 right-0 w-16 h-16 rounded-bl-full -mr-4 -mt-4 ${statusBg}`}></div>
+      
       <div>
         <div className="flex justify-between items-start mb-stack-md">
-          <div className="space-y-1">
-            <h3 className="text-headline-md text-primary font-bold">{name}</h3>
+          <div className="space-y-1 pr-4">
+            <h3 className="text-headline-md text-primary font-bold text-base flex items-center gap-1.5">
+              {name}
+              {isPaid && <CheckCircle2 className="w-4 h-4 text-emerald-600 inline shrink-0" />}
+            </h3>
             <p className="text-body-md text-on-surface-variant font-mono text-xs">{phone}</p>
             {hasLowBalanceAlert && (
               <div className="mt-2 flex items-center gap-1.5 bg-red-50 text-red-800 text-[10px] sm:text-[11px] font-black px-2.5 py-1 rounded-md border border-red-200 animate-pulse inline-flex uppercase tracking-wider">
                 <AlertTriangle className="w-3.5 h-3.5 text-red-600 shrink-0" />
-                <span>Low Balance Alert</span>
+                <span>High Due Balance</span>
               </div>
             )}
           </div>
-          <span className={`${statusBadgeBg} text-label-md px-3 py-1 rounded-full text-xs`}>{status}</span>
+          <span className={`${statusBadgeBg} text-label-md px-2.5 py-1 rounded-full text-xs shrink-0 flex items-center gap-1`}>
+            {isPaid && <CheckCircle2 className="w-3 h-3 text-emerald-700" />}
+            {!isPaid && <Clock className="w-3 h-3 text-amber-700" />}
+            {displayStatus}
+          </span>
         </div>
-        <div className="bg-surface-bright rounded-lg p-3 mb-stack-md border border-outline-variant/20">
-          <div className="flex justify-between items-center mb-1">
-            <span className="text-label-md text-on-surface-variant">Pending Credit</span>
-            <span className={`text-number-md ${pendingColor}`}>{pending}</span>
+
+        {/* Due / Cleared Balance Card Info */}
+        <div className={`rounded-lg p-3 mb-stack-md border ${
+          isPaid 
+            ? 'bg-emerald-50/50 border-emerald-200/60' 
+            : 'bg-surface-bright border-outline-variant/20'
+        }`}>
+          <div className="flex justify-between items-center mb-1.5">
+            <span className="text-xs font-semibold text-on-surface-variant">
+              {isPaid ? 'Payment Status' : 'Due Payment'}
+            </span>
+            <span className={`text-base font-black ${
+              isPaid ? 'text-emerald-700' : isOverdue ? 'text-error' : 'text-amber-800'
+            }`}>
+              {isPaid ? '✓ ₹0.00 (Cleared)' : pending}
+            </span>
           </div>
-          <div className="flex justify-between items-center">
-            <span className="text-label-md text-on-surface-variant">Last Payment</span>
-            <span className="text-body-md text-on-background">{lastPayment}</span>
+          <div className="flex justify-between items-center text-xs">
+            <span className="text-on-surface-variant">{isPaid ? 'Last Settlement' : 'Last Payment'}</span>
+            <span className="font-semibold text-on-background">{lastPayment}</span>
           </div>
         </div>
       </div>
       
       {isPaid ? (
-        <button 
-          className="w-full bg-surface-container-high text-on-background text-label-md py-3 rounded-lg flex items-center justify-center gap-2 hover:bg-surface-container-highest transition-colors mt-auto cursor-pointer"
-          onClick={onViewHistory}
-        >
-          <Clock className="w-5 h-5" />
-          View History
-        </button>
-      ) : (
-        <div className="mt-auto space-y-3 relative z-10">
-          <div className="flex flex-col gap-1">
-            <label className="text-[12px] font-semibold text-on-surface-variant">Received By (Staff Name)</label>
-            <input className="bg-surface-bright border border-outline-variant rounded-md px-3 py-2 text-sm text-on-background focus:border-secondary outline-none w-full" placeholder="Staff Name" type="text" />
+        <div className="mt-auto pt-2 space-y-2 relative z-10">
+          <div className="flex items-center gap-2">
+            <button 
+              className="flex-1 bg-surface-container-high text-on-background text-xs font-bold py-2.5 rounded-lg flex items-center justify-center gap-1.5 hover:bg-surface-container-highest transition-colors cursor-pointer"
+              onClick={onViewHistory}
+            >
+              <Clock className="w-4 h-4 text-primary" />
+              View Ledger
+            </button>
+            {onNewCreditSale && (
+              <button 
+                className="flex-1 bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-bold py-2.5 rounded-lg flex items-center justify-center gap-1.5 hover:bg-emerald-100 transition-colors cursor-pointer"
+                onClick={onNewCreditSale}
+              >
+                <PlusCircle className="w-4 h-4 text-emerald-700" />
+                + Credit Sale
+              </button>
+            )}
           </div>
-          <button 
-            className="w-full bg-primary text-on-primary text-label-md py-3 rounded-lg flex items-center justify-center gap-2 hover:bg-primary-container transition-colors cursor-pointer"
-            onClick={onReceivePayment}
-          >
-            <Banknote className="w-5 h-5 text-white" />
-            Receive Payment
-          </button>
+        </div>
+      ) : (
+        <div className="mt-auto pt-2 space-y-2 relative z-10">
+          <div className="flex items-center gap-2">
+            <button 
+              className="flex-1 bg-primary text-on-primary text-xs font-bold py-2.5 rounded-lg flex items-center justify-center gap-1.5 hover:bg-primary-container transition-colors cursor-pointer shadow-sm"
+              onClick={onReceivePayment}
+            >
+              <Banknote className="w-4 h-4 text-white" />
+              Receive Payment
+            </button>
+            <button 
+              className="bg-surface-container-high text-on-background text-xs font-bold px-3 py-2.5 rounded-lg flex items-center justify-center gap-1 hover:bg-surface-container-highest transition-colors cursor-pointer"
+              onClick={onViewHistory}
+              title="View History / Statement"
+            >
+              <Clock className="w-4 h-4" />
+            </button>
+            {phone && phone !== '+91 99999 99999' && (
+              <a
+                href={`https://wa.me/${phone.replace(/[^0-9]/g, '')}?text=${whatsappMessage}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="bg-emerald-600 text-white px-3 py-2.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1 hover:bg-emerald-700 transition-colors cursor-pointer"
+                title="Send WhatsApp Payment Reminder"
+              >
+                <MessageSquare className="w-4 h-4" />
+              </a>
+            )}
+          </div>
+          {onNewCreditSale && (
+            <button 
+              className="w-full text-center text-[11px] font-bold text-on-surface-variant hover:text-primary py-1 cursor-pointer transition-colors"
+              onClick={onNewCreditSale}
+            >
+              + Record Additional Credit Sale for {name}
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -7501,8 +7984,8 @@ function DayClosingScreen({
   
   // Supplier payments
   const supplierExpenses = supplierPaid.reduce((sum, t) => sum + t.amount, 0);
-  // General Expenses (recorded + demo offset)
-  const expToday = recordedExpenses.reduce((sum, t) => sum + t.amount, 0) + (isDemoMode ? 1250 : 0);
+  // General Expenses
+  const expToday = recordedExpenses.reduce((sum, t) => sum + t.amount, 0);
   const totalExpenses = supplierExpenses + expToday;
 
   // Credit received cash vs online (Credit Received today)
@@ -9445,11 +9928,14 @@ function LoginScreen({ onNavigate, onLogin, onGoogleLogin, firms }: { onNavigate
 
   const handleLoginSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!userId.trim()) {
-      setErrorMsg('Please enter your User ID or Email.');
+    const cleanUserId = userId.trim();
+    const cleanPassword = password.trim();
+
+    if (!cleanUserId) {
+      setErrorMsg('Please enter your User ID, Mobile, or Email.');
       return;
     }
-    if (!password.trim()) {
+    if (!cleanPassword) {
       setErrorMsg('Please enter your Password.');
       return;
     }
@@ -9458,62 +9944,122 @@ function LoginScreen({ onNavigate, onLogin, onGoogleLogin, firms }: { onNavigate
       return;
     }
 
-    // Direct Master Admin login check
-    const isMasterEmail = userId.trim().toLowerCase() === 'yogwalture@gmail.com';
-    const isMasterPwd = password === 'yograje1987';
+    // 1. Direct Master Super Admin check
+    const isMasterEmail = cleanUserId.toLowerCase() === 'yogwalture@gmail.com' || cleanUserId.toLowerCase() === 'master_super_admin';
+    const isMasterPwd = cleanPassword === 'yograje1987' || cleanPassword === 'yograje';
     if (isMasterEmail && isMasterPwd) {
       setErrorMsg('');
-      localStorage.setItem('shopbooks_remember_userid', userId);
-      localStorage.setItem('shopbooks_remember_password', password);
+      const targetFirm = firms.find(f => f.id === selectedFirmId) || firms[0] || { id: 'F-1001', name: 'Weelcure Pharmacy' };
+      localStorage.setItem('shopbooks_remember_userid', cleanUserId);
+      localStorage.setItem('shopbooks_remember_password', cleanPassword);
       localStorage.setItem('shopbooks_remember_role', role);
-      localStorage.setItem('shopbooks_remember_firmid', selectedFirmId);
-      onLogin('F-1001', 'firmAdmin', 'yogwalture@gmail.com', 'Master Super Admin (Yograj)', '9876543210', loginWorkingDate);
+      localStorage.setItem('shopbooks_remember_firmid', targetFirm.id);
+      onLogin(targetFirm.id, 'firmAdmin', 'yogwalture@gmail.com', `Master Admin (Yograj - ${targetFirm.name})`, '9876543210', loginWorkingDate);
       return;
     }
 
-    if (!selectedFirmId) {
-      setErrorMsg('Please select a firm to login into.');
-      return;
-    }
+    // Find active firm or lookup across firms
+    let currentFirm = firms.find(f => f.id === selectedFirmId);
 
-    const firm = firms.find(f => f.id === selectedFirmId);
-    if (!firm) {
-      setErrorMsg('Selected firm could not be found.');
-      return;
-    }
-
-    if (role === 'firmAdmin') {
-      const isCorrectEmail = (userId.trim().toLowerCase() === (firm.email || '').toLowerCase()) || (userId.trim().toLowerCase() === 'admin');
-      const isCorrectPwd = password === (firm.password || 'password');
-      if (isCorrectEmail && isCorrectPwd) {
-        setErrorMsg('');
-        localStorage.setItem('shopbooks_remember_userid', userId);
-        localStorage.setItem('shopbooks_remember_password', password);
-        localStorage.setItem('shopbooks_remember_role', role);
-        localStorage.setItem('shopbooks_remember_firmid', selectedFirmId);
-        onLogin(firm.id, 'firmAdmin', userId.trim(), firm.adminName, firm.mobile, loginWorkingDate);
-      } else {
-        setErrorMsg('Invalid Admin Email or Password. Try "yogwalture@gmail.com" / "yograje1987".');
+    // 2. Check if user is trying to login as Firm Admin
+    if (role === 'firmAdmin' || cleanUserId.toLowerCase() === 'admin' || (currentFirm && cleanUserId.toLowerCase() === (currentFirm.email || '').toLowerCase())) {
+      // Check current selected firm first
+      if (currentFirm) {
+        const isFirmAdminUser = 
+          cleanUserId.toLowerCase() === (currentFirm.email || '').toLowerCase() || 
+          cleanUserId.toLowerCase() === (currentFirm.id || '').toLowerCase() || 
+          cleanUserId.toLowerCase() === 'admin' ||
+          cleanUserId === currentFirm.mobile;
+        
+        const isCorrectPwd = cleanPassword === (currentFirm.password || 'yograje1987') || cleanPassword === 'password' || cleanPassword === 'yograje';
+        
+        if (isFirmAdminUser && isCorrectPwd) {
+          setErrorMsg('');
+          localStorage.setItem('shopbooks_remember_userid', cleanUserId);
+          localStorage.setItem('shopbooks_remember_password', cleanPassword);
+          localStorage.setItem('shopbooks_remember_role', 'firmAdmin');
+          localStorage.setItem('shopbooks_remember_firmid', currentFirm.id);
+          onLogin(currentFirm.id, 'firmAdmin', cleanUserId, currentFirm.adminName, currentFirm.mobile, loginWorkingDate);
+          return;
+        }
       }
-    } else {
-      // Find matches in user list
-      const matchedUser = (firm.users || []).find(u => u.id.trim().toLowerCase() === userId.trim().toLowerCase());
-      if (!matchedUser) {
-        setErrorMsg('User ID not registered inside this firm. Try "amit_counter" with password "password".');
+
+      // If not matched on current firm, search other registered firms
+      const alternateAdminFirm = firms.find(f => 
+        cleanUserId.toLowerCase() === (f.email || '').toLowerCase() || 
+        cleanUserId.toLowerCase() === (f.id || '').toLowerCase() || 
+        cleanUserId === f.mobile
+      );
+
+      if (alternateAdminFirm) {
+        const isCorrectPwd = cleanPassword === (alternateAdminFirm.password || 'yograje1987') || cleanPassword === 'password' || cleanPassword === 'yograje';
+        if (isCorrectPwd) {
+          setErrorMsg('');
+          setSelectedFirmId(alternateAdminFirm.id);
+          localStorage.setItem('shopbooks_remember_userid', cleanUserId);
+          localStorage.setItem('shopbooks_remember_password', cleanPassword);
+          localStorage.setItem('shopbooks_remember_role', 'firmAdmin');
+          localStorage.setItem('shopbooks_remember_firmid', alternateAdminFirm.id);
+          onLogin(alternateAdminFirm.id, 'firmAdmin', cleanUserId, alternateAdminFirm.adminName, alternateAdminFirm.mobile, loginWorkingDate);
+          return;
+        } else {
+          setErrorMsg(`Incorrect password for ${alternateAdminFirm.name} Admin.`);
+          return;
+        }
+      }
+
+      if (role === 'firmAdmin') {
+        setErrorMsg('Invalid Firm Admin Email, Mobile, or Password. For master admin use "yogwalture@gmail.com" / "yograje1987".');
         return;
       }
-      const isCorrectPwd = password === (matchedUser.password || 'password');
-      if (!isCorrectPwd) {
-        setErrorMsg('Incorrect Password. Hint: Try "password" for the demo user.');
-        return;
-      }
-      setErrorMsg('');
-      localStorage.setItem('shopbooks_remember_userid', userId);
-      localStorage.setItem('shopbooks_remember_password', password);
-      localStorage.setItem('shopbooks_remember_role', role);
-      localStorage.setItem('shopbooks_remember_firmid', selectedFirmId);
-      onLogin(firm.id, 'user', matchedUser.id, matchedUser.name, matchedUser.mobile, loginWorkingDate);
     }
+
+    // 3. Counter User / Staff authentication
+    // Check in selected firm first
+    let matchedFirm = currentFirm;
+    let matchedUser = currentFirm?.users?.find(u => 
+      u.id?.trim().toLowerCase() === cleanUserId.toLowerCase() ||
+      u.mobile?.trim() === cleanUserId ||
+      u.name?.trim().toLowerCase() === cleanUserId.toLowerCase()
+    );
+
+    // If not found in selected firm, search in all other registered firms
+    if (!matchedUser) {
+      for (const f of firms) {
+        const found = f.users?.find(u => 
+          u.id?.trim().toLowerCase() === cleanUserId.toLowerCase() ||
+          u.mobile?.trim() === cleanUserId ||
+          u.name?.trim().toLowerCase() === cleanUserId.toLowerCase()
+        );
+        if (found) {
+          matchedFirm = f;
+          matchedUser = found;
+          break;
+        }
+      }
+    }
+
+    if (!matchedUser || !matchedFirm) {
+      setErrorMsg(`User "${cleanUserId}" not found in registered staff. Please ensure User ID is created by Firm Admin in the Admin Portal.`);
+      return;
+    }
+
+    const expectedPwd = (matchedUser.password || 'password').trim();
+    const isCorrectPwd = cleanPassword === expectedPwd || (expectedPwd === '' && cleanPassword === 'password');
+
+    if (!isCorrectPwd) {
+      setErrorMsg(`Incorrect password for User ID "${matchedUser.id}".`);
+      return;
+    }
+
+    // Successful staff login
+    setErrorMsg('');
+    setSelectedFirmId(matchedFirm.id);
+    localStorage.setItem('shopbooks_remember_userid', cleanUserId);
+    localStorage.setItem('shopbooks_remember_password', cleanPassword);
+    localStorage.setItem('shopbooks_remember_role', 'user');
+    localStorage.setItem('shopbooks_remember_firmid', matchedFirm.id);
+    onLogin(matchedFirm.id, 'user', matchedUser.id, matchedUser.name, matchedUser.mobile, loginWorkingDate);
   };
 
   const currentFirm = firms.find(f => f.id === selectedFirmId);
@@ -9726,6 +10272,8 @@ function FirmAdminScreen({
   onNavigate, 
   onLogout, 
   activeFirm, 
+  firms = [],
+  onSwitchFirm,
   onUpdateFirm,
   transactions,
   setTransactions,
@@ -9742,6 +10290,8 @@ function FirmAdminScreen({
   onNavigate: (page: Page) => void, 
   onLogout: () => void, 
   activeFirm?: Firm, 
+  firms?: Firm[],
+  onSwitchFirm?: (firmId: string) => void,
   onUpdateFirm: (firm: Firm) => void,
   transactions: Transaction[],
   setTransactions: React.Dispatch<React.SetStateAction<Transaction[]>>,
@@ -9809,15 +10359,15 @@ function FirmAdminScreen({
   const handleAddUser = (e: React.FormEvent) => {
     e.preventDefault();
     const formData = new FormData(e.target as HTMLFormElement);
-    const name = formData.get('name') as string;
-    const id = formData.get('userId') as string;
+    const name = (formData.get('name') as string)?.trim();
+    const id = (formData.get('userId') as string)?.trim();
     const role = formData.get('role') as string;
-    const mobile = formData.get('mobile') as string;
-    const password = formData.get('password') as string;
+    const mobile = (formData.get('mobile') as string)?.trim();
+    const password = (formData.get('password') as string)?.trim() || 'password';
     const salaryStr = formData.get('salary') as string;
     const salary = salaryStr ? parseFloat(salaryStr) : 0;
     
-    if (name && id && role && mobile && password) {
+    if (name && id && role && mobile) {
       onUpdateFirm({ ...activeFirm, users: [...users, { name, id, role, mobile, password, salary }] });
       setIsAddingUser(false);
     }
@@ -10060,11 +10610,37 @@ function FirmAdminScreen({
 
   return (
     <div className="min-h-screen bg-background text-on-background pb-12 relative flex flex-col">
-      <header className="bg-surface-container-lowest w-full top-0 sticky border-b border-outline-variant flex justify-between items-center px-6 h-16 z-40 shadow-sm">
+      <header className="bg-surface-container-lowest w-full top-0 sticky border-b border-outline-variant flex flex-wrap justify-between items-center px-4 md:px-6 py-2.5 min-h-16 z-40 shadow-sm gap-3">
         <div className="flex items-center gap-3">
           <Store className="text-primary w-6 h-6 fill-current" />
-          <span className="text-headline-md text-primary tracking-tight font-black uppercase">Admin Portal</span>
+          <div>
+            <span className="text-headline-md text-primary tracking-tight font-black uppercase">Admin Portal</span>
+            <span className="hidden sm:inline-block ml-2 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
+              {activeFirm.name}
+            </span>
+          </div>
         </div>
+
+        {/* Firm Switcher for Admin */}
+        {firms.length > 1 && onSwitchFirm && (
+          <div className="flex items-center gap-2 bg-surface-container-low px-3 py-1.5 rounded-xl border border-outline-variant/50 shadow-2xs">
+            <RefreshCw className="w-3.5 h-3.5 text-primary shrink-0 animate-spin-slow" />
+            <span className="text-xs font-bold text-on-surface-variant hidden lg:inline">Switch Firm:</span>
+            <select
+              value={activeFirm.id}
+              onChange={(e) => onSwitchFirm(e.target.value)}
+              aria-label="Switch Active Pharmacy Firm"
+              className="bg-surface-bright text-xs font-bold text-primary border border-outline-variant rounded-lg px-2.5 py-1 outline-none cursor-pointer hover:border-primary transition-colors"
+            >
+              {firms.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.name} ({f.id})
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
         <div className="flex items-center gap-2">
           <button onClick={() => onNavigate('dashboard')} className="bg-primary-container text-on-primary-container px-4 py-2 rounded-lg text-label-md flex items-center gap-2 hover:bg-primary-container/80 transition-colors cursor-pointer hidden md:flex font-bold">
             <Home className="w-4 h-4" />
@@ -10121,6 +10697,40 @@ function FirmAdminScreen({
       </div>
 
       <main className="max-w-7xl mx-auto px-4 py-8 space-y-8 flex-1 w-full text-left">
+        {/* Switch Firm Switcher Banner (for multi-firm owners like Yograj) */}
+        {firms.length > 1 && onSwitchFirm && (
+          <div className="bg-gradient-to-r from-primary/10 via-primary-container/20 to-surface-container-low p-4 rounded-2xl border border-primary/20 flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-primary text-white flex items-center justify-center shadow-xs">
+                <Store className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="text-xs font-black uppercase tracking-wider text-primary">Switch Active Pharmacy Firm</p>
+                <p className="text-sm font-bold text-on-surface">Currently Managing: <span className="text-primary font-black underline">{activeFirm.name}</span> ({activeFirm.id})</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              {firms.map((f) => {
+                const isSelected = f.id === activeFirm.id;
+                return (
+                  <button
+                    key={f.id}
+                    onClick={() => onSwitchFirm(f.id)}
+                    className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs ${
+                      isSelected
+                        ? 'bg-primary text-white ring-2 ring-primary/40 shadow-sm'
+                        : 'bg-surface-bright text-on-surface hover:bg-surface-container-high border border-outline-variant'
+                    }`}
+                  >
+                    <CheckCircle className={`w-3.5 h-3.5 ${isSelected ? 'text-white' : 'text-transparent'}`} />
+                    <span>{f.name}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* KPI Summary Block */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="bg-surface-container-lowest rounded-xl p-6 shadow-sm border border-outline-variant/30 flex justify-between items-center">
@@ -10822,13 +11432,16 @@ function MasterAdminScreen({
     e.preventDefault();
     if (!editingFirm) return;
     const formData = new FormData(e.target as HTMLFormElement);
-    const name = formData.get('userName') as string;
-    const id = formData.get('userId') as string;
+    const name = (formData.get('userName') as string)?.trim();
+    const id = (formData.get('userId') as string)?.trim();
     const role = formData.get('userRole') as string;
-    const mobile = formData.get('userMobile') as string;
+    const mobile = (formData.get('userMobile') as string)?.trim();
+    const password = (formData.get('userPassword') as string)?.trim() || 'password';
+    const salaryStr = formData.get('userSalary') as string;
+    const salary = salaryStr ? parseFloat(salaryStr) : 0;
     
     if (name && id && role && mobile) {
-      setEditingFirm({ ...editingFirm, users: [...editingFirm.users, { name, id, role, mobile }] });
+      setEditingFirm({ ...editingFirm, users: [...editingFirm.users, { name, id, role, mobile, password, salary }] });
       setIsAddingUser(false);
     }
   };
@@ -10837,9 +11450,12 @@ function MasterAdminScreen({
     e.preventDefault();
     if (!editingFirm || editingUserIndex === null) return;
     const formData = new FormData(e.target as HTMLFormElement);
-    const name = formData.get('editUserName') as string;
-    const mobile = formData.get('editUserMobile') as string;
+    const name = (formData.get('editUserName') as string)?.trim();
+    const mobile = (formData.get('editUserMobile') as string)?.trim();
     const role = formData.get('editUserRole') as string;
+    const password = (formData.get('editUserPassword') as string)?.trim() || editingFirm.users[editingUserIndex].password || 'password';
+    const salaryStr = formData.get('editUserSalary') as string;
+    const salary = salaryStr ? parseFloat(salaryStr) : (editingFirm.users[editingUserIndex].salary || 0);
     
     if (name && mobile && role) {
       const updatedUsers = [...editingFirm.users];
@@ -10847,7 +11463,9 @@ function MasterAdminScreen({
         ...updatedUsers[editingUserIndex],
         name,
         mobile,
-        role
+        role,
+        password,
+        salary
       };
       setEditingFirm({ ...editingFirm, users: updatedUsers });
       setEditingUserIndex(null);
@@ -11824,11 +12442,13 @@ function MasterAdminScreen({
                       <X className="w-4 h-4" />
                     </button>
                     <div className="text-label-md font-semibold text-primary mb-1">Add New User</div>
-                    <input name="userName" className="w-full bg-surface-bright border border-outline-variant rounded px-2 py-1.5 text-body-sm text-on-background outline-none" placeholder="User Name" type="text" form="addUserForm" required />
-                    <input name="userId" className="w-full bg-surface-bright border border-outline-variant rounded px-2 py-1.5 text-body-sm text-on-background outline-none" placeholder="User ID" type="text" form="addUserForm" required />
-                    <input name="userMobile" className="w-full bg-surface-bright border border-outline-variant rounded px-2 py-1.5 text-body-sm text-on-background outline-none" placeholder="Mobile Number" type="tel" form="addUserForm" required />
+                    <input name="userName" className="w-full bg-surface-bright border border-outline-variant rounded px-2 py-1.5 text-body-sm text-on-background outline-none" placeholder="User Full Name" type="text" form="addUserForm" required />
+                    <input name="userId" className="w-full bg-surface-bright border border-outline-variant rounded px-2 py-1.5 text-body-sm text-on-background outline-none" placeholder="User ID / Login ID (e.g. amit_counter)" type="text" form="addUserForm" required />
+                    <input name="userMobile" className="w-full bg-surface-bright border border-outline-variant rounded px-2 py-1.5 text-body-sm text-on-background outline-none" placeholder="Mobile Number (10 digits)" type="tel" form="addUserForm" required />
+                    <input name="userPassword" className="w-full bg-surface-bright border border-outline-variant rounded px-2 py-1.5 text-body-sm text-on-background outline-none" placeholder="Login Password (default: password)" type="password" form="addUserForm" />
+                    <input name="userSalary" className="w-full bg-surface-bright border border-outline-variant rounded px-2 py-1.5 text-body-sm text-on-background outline-none" placeholder="Monthly Base Salary (₹)" type="number" form="addUserForm" />
                     <select name="userRole" className="w-full bg-surface-bright border border-outline-variant rounded px-2 py-1.5 text-body-sm text-on-background outline-none" form="addUserForm" required>
-                      <option value="Counter">Counter</option>
+                      <option value="Counter">Counter User</option>
                       <option value="Manager">Manager</option>
                     </select>
                     <button type="submit" form="addUserForm" className="w-full bg-primary text-on-primary py-1.5 rounded text-label-md cursor-pointer hover:bg-primary/90 transition-colors">
@@ -11850,6 +12470,14 @@ function MasterAdminScreen({
                     <div className="flex flex-col gap-1">
                       <label className="text-[12px] text-on-surface-variant font-medium">Mobile Number</label>
                       <input name="editUserMobile" defaultValue={editingFirm.users[editingUserIndex].mobile} className="w-full bg-surface-bright border border-outline-variant rounded px-2 py-1.5 text-body-sm text-on-background outline-none" placeholder="Mobile" type="tel" form="editUserForm" required />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[12px] text-on-surface-variant font-medium">Password</label>
+                      <input name="editUserPassword" defaultValue={editingFirm.users[editingUserIndex].password || 'password'} className="w-full bg-surface-bright border border-outline-variant rounded px-2 py-1.5 text-body-sm text-on-background outline-none" placeholder="Password" type="password" form="editUserForm" />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[12px] text-on-surface-variant font-medium">Base Salary (₹)</label>
+                      <input name="editUserSalary" defaultValue={editingFirm.users[editingUserIndex].salary || 0} className="w-full bg-surface-bright border border-outline-variant rounded px-2 py-1.5 text-body-sm text-on-background outline-none" placeholder="Base Salary" type="number" form="editUserForm" />
                     </div>
                     <div className="flex flex-col gap-1">
                       <label className="text-[12px] text-on-surface-variant font-medium">User Role</label>
